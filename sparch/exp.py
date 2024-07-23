@@ -109,7 +109,8 @@ class Experiment:
             # Initialize best accuracy
             if self.use_pretrained_model:
                 logging.info("\n------ Using pretrained model ------\n")
-                best_epoch, best_acc = self.valid_one_epoch(self.start_epoch, 0, 0)
+                best_acc = self.valid_one_epoch(self.start_epoch)
+                best_epoch = self.start_epoch
             else:
                 best_epoch, best_acc = 0, 0
 
@@ -118,7 +119,19 @@ class Experiment:
 
             for e in range(best_epoch + 1, best_epoch + self.nb_epochs + 1):
                 self.train_one_epoch(e)
-                best_epoch, best_acc = self.valid_one_epoch(e, best_epoch, best_acc)
+                valid_acc = self.valid_one_epoch(e)
+
+                # Update best epoch and accuracy
+                if valid_acc > best_acc:
+                    best_acc = valid_acc
+                    best_epoch = e
+
+                    # Save best model
+                    if self.save_best:
+                        torch.save(self.net, f"{self.checkpoint_dir}/best_model.pth")
+                        logging.info(f"\nBest model saved with valid acc={valid_acc}")
+
+                logging.info("\n-----------------------------\n")
 
             logging.info(f"\nBest valid acc at epoch {best_epoch}: {best_acc}\n")
             logging.info("\n------ Training finished ------\n")
@@ -402,7 +415,7 @@ class Experiment:
         elapsed = str(timedelta(seconds=end - start))
         logging.info(f"Epoch {e}: train elapsed time={elapsed}")
 
-    def valid_one_epoch(self, e, best_epoch, best_acc):
+    def valid_one_epoch(self, e):
         """
         This function tests the model with a single pass over the
         validation split of the dataset.
@@ -452,19 +465,7 @@ class Experiment:
             # Update learning rate
             self.scheduler.step(valid_acc)
 
-            # Update best epoch and accuracy
-            if valid_acc > best_acc:
-                best_acc = valid_acc
-                best_epoch = e
-
-                # Save best model
-                if self.save_best:
-                    torch.save(self.net, f"{self.checkpoint_dir}/best_model.pth")
-                    logging.info(f"\nBest model saved with valid acc={valid_acc}")
-
-            logging.info("\n-----------------------------\n")
-
-            return best_epoch, best_acc
+            return valid_acc
 
     def test_one_epoch(self, test_loader):
         """
