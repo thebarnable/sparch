@@ -62,6 +62,12 @@ def add_model_options(parser):
         help="If True, a bidirectional model that scans the sequence in both "
         "directions is used, which doubles the size of feedforward matrices. ",
     )
+    parser.add_argument(
+        "--balance",
+        type=lambda x: bool(strtobool(str(x))),
+        default=False,
+        help="If True, input currents to individual neurons are tracked and saved - will reduce performance drastically.",
+    )
     return parser
 
 
@@ -77,6 +83,7 @@ def print_model_options(args):
         Normalization: {normalization}
         Use bias: {use_bias}
         Bidirectional: {bidirectional}
+        Balance: {balance}
     """.format(
             **vars(args)
         )

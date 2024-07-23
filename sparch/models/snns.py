@@ -87,6 +87,7 @@ class SNN(nn.Module):
         use_bias=False,
         bidirectional=False,
         use_readout_layer=True,
+        balance=False
     ):
         super().__init__()
 
@@ -105,6 +106,7 @@ class SNN(nn.Module):
         self.bidirectional = bidirectional
         self.use_readout_layer = use_readout_layer
         self.is_snn = True
+        self.balance = balance
 
         if neuron_type not in ["LIF", "adLIF", "RLIF", "RadLIF"]:
             raise ValueError(f"Invalid neuron type {neuron_type}")
@@ -135,6 +137,7 @@ class SNN(nn.Module):
                     normalization=self.normalization,
                     use_bias=self.use_bias,
                     bidirectional=self.bidirectional,
+                    balance=self.balance
                 )
             )
             input_size = self.layer_sizes[i] * (1 + self.bidirectional)
@@ -213,6 +216,7 @@ class LIFLayer(nn.Module):
         normalization="batchnorm",
         use_bias=False,
         bidirectional=False,
+        balance=False
     ):
         super().__init__()
 
@@ -340,6 +344,7 @@ class adLIFLayer(nn.Module):
         normalization="batchnorm",
         use_bias=False,
         bidirectional=False,
+        balance=False
     ):
         super().__init__()
 
@@ -482,6 +487,7 @@ class RLIFLayer(nn.Module):
         normalization="batchnorm",
         use_bias=False,
         bidirectional=False,
+        balance=False
     ):
         super().__init__()
 
@@ -497,9 +503,16 @@ class RLIFLayer(nn.Module):
         self.batch_size = self.batch_size * (1 + self.bidirectional)
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.spike_fct = SpikeFunctionBoxcar.apply
+        self.balance = balance
 
         # Trainable parameters
-        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
+        if self.balance:
+            self.W_inh = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
+            self.W_exc = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
+            self.W_exc.weight.data = torch.where(self.W_inh.weight.data>=0, self.W_inh.weight.data, 0)
+            self.W_inh.weight.data = torch.where(self.W_inh.weight.data<0, self.W_inh.weight.data, 0)
+        else:
+            self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
         self.V = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
         self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
 
@@ -530,7 +543,13 @@ class RLIFLayer(nn.Module):
             self.batch_size = x.shape[0]
 
         # Feed-forward affine transformations (all steps in parallel)
-        Wx = self.W(x)
+        if self.balance:
+            Wx_inh = self.W_inh(x)
+            Wx_exc = self.W_exc(x)
+            Wx = Wx_inh + Wx_exc
+        else:
+            Wx = self.W(x)
+        #I_in_inh, I_in_exc = self._signed_matmul(self.W.weight.detach(), x.detach())
 
         # Apply normalization
         if self.normalize:
@@ -538,7 +557,7 @@ class RLIFLayer(nn.Module):
             Wx = _Wx.reshape(Wx.shape[0], Wx.shape[1], Wx.shape[2])
 
         # Compute spikes via neuron dynamics
-        s = self._rlif_cell(Wx)
+        s, I_rec_inh, I_rec_exc = self._rlif_cell(Wx)
 
         # Concatenate forward and backward sequences on feat dim
         if self.bidirectional:
@@ -558,6 +577,7 @@ class RLIFLayer(nn.Module):
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         s = []
+        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[2], Wx.shape[1]).to(device), torch.zeros(Wx.shape[2], Wx.shape[1]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
         alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
@@ -575,7 +595,17 @@ class RLIFLayer(nn.Module):
             st = self.spike_fct(ut - self.threshold)
             s.append(st)
 
-        return torch.stack(s, dim=1)
+            # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
+            if self.balance:
+                I_rec_inh[:, t], I_rec_exc[:, t] = self._signed_matmul(V, st)
+                # TODO: V x st equivalence check
+
+        return torch.stack(s, dim=1), I_rec_inh, I_rec_exc
+
+    def _signed_matmul(A, B):
+        # Compute C:=A x B for matrices A & B, split up into positive and negative components
+        # Returns: C_neg (AxB for negative elements of A, rest set to 0), C_pos (AxB for positive elements of A, rest set to 0)
+        return torch.mm(torch.where(A<0, A, 0), B), np.matmul(torch.where(A>=0, A, 0), B)
 
 
 class RadLIFLayer(nn.Module):
@@ -615,6 +645,7 @@ class RadLIFLayer(nn.Module):
         normalization="batchnorm",
         use_bias=False,
         bidirectional=False,
+        balance=False
     ):
         super().__init__()
 
