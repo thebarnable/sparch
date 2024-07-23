@@ -8,8 +8,8 @@
 # This file is part of the sparch package
 #
 
-h5py==3.7.0
-numpy==1.22.3
-torch==1.12.0
-torchaudio==0.12.0
-torchaudio_augmentations==0.2.4
+h5py>=3.7.0
+numpy>=1.22.3
+torch>=1.12.0
+torchaudio>=0.12.0
+torchaudio_augmentations>=0.2.4

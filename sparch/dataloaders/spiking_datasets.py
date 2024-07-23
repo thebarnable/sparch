@@ -58,7 +58,7 @@ class SpikingDataset(Dataset):
         self.h5py_file = h5py.File(filename, "r")
         self.firing_times = self.h5py_file["spikes"]["times"]
         self.units_fired = self.h5py_file["spikes"]["units"]
-        self.labels = np.array(self.h5py_file["labels"], dtype=np.int)
+        self.labels = np.array(self.h5py_file["labels"], dtype=int)
 
     def __len__(self):
         return len(self.labels)
