@@ -144,6 +144,12 @@ def add_training_options(parser):
         help="Whether to use data augmentation or not. Only implemented for "
         "nonspiking HD and SC datasets.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=-1,
+        help="Seed for RNGs (if -1, use time).",
+    )
     return parser
 
 

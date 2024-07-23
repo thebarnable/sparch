@@ -15,7 +15,9 @@ import errno
 import logging
 import os
 import time
+import datetime
 from datetime import timedelta
+import random
 
 import numpy as np
 import torch
@@ -70,6 +72,13 @@ class Experiment:
         self.reg_fmin = args.reg_fmin
         self.reg_fmax = args.reg_fmax
         self.use_augm = args.use_augm
+
+        # Set seed
+        if args.seed == -1:
+            args.seed = int(datetime.datetime.now().timestamp())
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        random.seed(args.seed)
 
         # Initialize logging and output folders
         self.init_exp_folders()
