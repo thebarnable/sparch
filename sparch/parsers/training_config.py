@@ -150,6 +150,12 @@ def add_training_options(parser):
         default=-1,
         help="Seed for RNGs (if -1, use time).",
     )
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=1,
+        help="Number of trials to run with different seeds.",
+    )
     return parser
 
 

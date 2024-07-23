@@ -41,11 +41,16 @@ def main():
     # Get experiment configuration from parser
     args = parse_args()
 
-    # Instantiate class for the desired experiment
-    experiment = Experiment(args)
+    for i in range(args.trials):
+        if args.trials > 1:
+            args.seed = i
 
-    # Run experiment
-    experiment.forward()
+        # Instantiate class for the desired experiment
+        experiment = Experiment(args)
+
+        # Run experiment
+        logging.info(f"\n-------- Trial {i+1}/{args.trials} --------\n")
+        experiment.forward()
 
 
 if __name__ == "__main__":
