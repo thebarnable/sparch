@@ -1,0 +1,15 @@
+exp/
+__pycache__/
+results/
+results_*/
+*.orig
+*_BACKUP_*
+*_BASE_*
+*_LOCAL_*
+*_REMOTE_*
+SHD/
+*.db
+plots/
+.vscode/
+*.db
+.test/
