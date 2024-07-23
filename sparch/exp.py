@@ -204,7 +204,9 @@ class Experiment:
             outname += "_bdir" if self.bidirectional else "_udir"
             outname += "_reg" if self.use_regularizers else "_noreg"
             outname += "_lr" + str(self.lr)
-            exp_folder = "exp/" + outname.replace(".", "_")
+            exp_folder = "exp/" + outname.replace(".", "_") + "/run0"
+            while os.path.exists(exp_folder): # if run0 already exists, create run1 (and so on)
+                exp_folder=exp_folder[:-1] + str(int(exp_folder[-1])+1)
 
         # For a new model check that out path does not exist
         if not self.use_pretrained_model and os.path.exists(exp_folder):
