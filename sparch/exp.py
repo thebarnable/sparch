@@ -105,21 +105,21 @@ class Experiment:
         specified by the class initialization.
         """
         if not self.only_do_testing:
-
             # Initialize best accuracy
             if self.use_pretrained_model:
                 logging.info("\n------ Using pretrained model ------\n")
-                best_acc = self.valid_one_epoch(self.start_epoch)
+                best_acc, _ = self.valid_one_epoch(self.start_epoch)
                 best_epoch = self.start_epoch
             else:
                 best_epoch, best_acc = 0, 0
 
             # Loop over epochs (training + validation)
+            train_accs, train_frs, validation_accs, validation_frs = [], [], [], []
             logging.info("\n------ Begin training ------\n")
 
             for e in range(best_epoch + 1, best_epoch + self.nb_epochs + 1):
-                self.train_one_epoch(e)
-                valid_acc = self.valid_one_epoch(e)
+                train_acc, train_fr = self.train_one_epoch(e)
+                valid_acc, valid_fr = self.valid_one_epoch(e)
 
                 # Update best epoch and accuracy
                 if valid_acc > best_acc:
@@ -131,6 +131,10 @@ class Experiment:
                         torch.save(self.net, f"{self.checkpoint_dir}/best_model.pth")
                         logging.info(f"\nBest model saved with valid acc={valid_acc}")
 
+                train_accs.append(train_acc)
+                train_frs.append(train_fr)
+                validation_accs.append(valid_acc)
+                validation_frs.append(valid_fr)
                 logging.info("\n-----------------------------\n")
 
             logging.info(f"\nBest valid acc at epoch {best_epoch}: {best_acc}\n")
@@ -152,12 +156,24 @@ class Experiment:
 
         # Test trained model
         if self.dataset_name in ["sc", "ssc"]:
-            self.test_one_epoch(self.test_loader)
+            test_acc, test_fr = self.test_one_epoch(self.test_loader)
         else:
-            self.test_one_epoch(self.valid_loader)
+            test_acc, test_fr = self.test_one_epoch(self.valid_loader)
             logging.info(
                 "\nThis dataset uses the same split for validation and testing.\n"
             )
+
+        # Save results summary
+        results = {}
+        results["train_accs"] = train_accs
+        results["train_frs"] = train_frs
+        results["validation_accs"] = validation_accs
+        results["validation_frs"] = validation_frs
+        results["test_acc"] = test_acc
+        results["test_fr"] = test_acc
+        results["best_acc"] = best_acc
+        results["best_epoch"] = best_epoch
+        torch.save(results, f"{self.exp_folder}/results.pth")
 
     def init_exp_folders(self):
         """
@@ -355,6 +371,7 @@ class Experiment:
         """
         This function trains the model with a single pass over the
         training split of the dataset.
+        Returns: training accuracy (float), spike rate average (float)
         """
         start = time.time()
         self.net.train()
@@ -415,10 +432,13 @@ class Experiment:
         elapsed = str(timedelta(seconds=end - start))
         logging.info(f"Epoch {e}: train elapsed time={elapsed}")
 
+        return train_acc, epoch_spike_rate
+
     def valid_one_epoch(self, e):
         """
         This function tests the model with a single pass over the
         validation split of the dataset.
+        Returns: validation accuracy (float), spike rate average (float)
         """
         with torch.no_grad():
 
@@ -465,12 +485,13 @@ class Experiment:
             # Update learning rate
             self.scheduler.step(valid_acc)
 
-            return valid_acc
+            return valid_acc, epoch_spike_rate
 
     def test_one_epoch(self, test_loader):
         """
         This function tests the model with a single pass over the
         testing split of the dataset.
+        Returns: test accuracy (float), spike rate average (float)
         """
         with torch.no_grad():
 
@@ -517,3 +538,5 @@ class Experiment:
                 logging.info(f"Test mean act rate={epoch_spike_rate}")
 
             logging.info("\n-----------------------------\n")
+
+            return test_acc, epoch_spike_rate
