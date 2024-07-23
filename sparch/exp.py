@@ -172,7 +172,7 @@ class Experiment:
             outname += "_bdir" if self.bidirectional else "_udir"
             outname += "_reg" if self.use_regularizers else "_noreg"
             outname += "_lr" + str(self.lr)
-            exp_folder = "exp/test_exps/" + outname.replace(".", "_")
+            exp_folder = "exp/" + outname.replace(".", "_")
 
         # For a new model check that out path does not exist
         if not self.use_pretrained_model and os.path.exists(exp_folder):
