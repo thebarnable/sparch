@@ -108,7 +108,7 @@ class Experiment:
             # Initialize best accuracy
             if self.use_pretrained_model:
                 logging.info("\n------ Using pretrained model ------\n")
-                best_acc, _ = self.valid_one_epoch(self.start_epoch)
+                best_acc, _ = self.valid_one_epoch(self.start_epoch, self.valid_loader, test=False)
                 best_epoch = self.start_epoch
             else:
                 best_epoch, best_acc = 0, 0
@@ -119,7 +119,8 @@ class Experiment:
 
             for e in range(best_epoch + 1, best_epoch + self.nb_epochs + 1):
                 train_acc, train_fr = self.train_one_epoch(e)
-                valid_acc, valid_fr = self.valid_one_epoch(e)
+                valid_acc, valid_fr = self.valid_one_epoch(e, self.valid_loader, test=False)
+                self.scheduler.step(valid_acc) # Update learning rate
 
                 # Update best epoch and accuracy
                 if valid_acc > best_acc:
@@ -155,13 +156,15 @@ class Experiment:
                 )
 
         # Test trained model
+        logging.info("\n------ Begin Testing ------\n")
         if self.dataset_name in ["sc", "ssc"]:
-            test_acc, test_fr = self.test_one_epoch(self.test_loader)
+            test_acc, test_fr = self.valid_one_epoch(e, self.test_loader, test=True)
         else:
-            test_acc, test_fr = self.test_one_epoch(self.valid_loader)
+            test_acc, test_fr = self.valid_one_epoch(e, self.valid_loader, test=True)
             logging.info(
                 "\nThis dataset uses the same split for validation and testing.\n"
             )
+        logging.info("\n-----------------------------\n")
 
         # Save results summary
         results = {}
@@ -417,27 +420,27 @@ class Experiment:
 
         # Train loss of whole epoch
         train_loss = np.mean(losses)
-        logging.info(f"Epoch {e}: train loss={train_loss}")
+        logging.info(f"Epoch {e}: Train loss={train_loss}")
 
         # Train accuracy of whole epoch
         train_acc = np.mean(accs)
-        logging.info(f"Epoch {e}: train acc={train_acc}")
+        logging.info(f"Epoch {e}: Train acc={train_acc}")
 
         # Train spike activity of whole epoch
         if self.net.is_snn:
             epoch_spike_rate /= step
-            logging.info(f"Epoch {e}: train mean act rate={epoch_spike_rate}")
+            logging.info(f"Epoch {e}: Train mean act rate={epoch_spike_rate}")
 
         end = time.time()
         elapsed = str(timedelta(seconds=end - start))
-        logging.info(f"Epoch {e}: train elapsed time={elapsed}")
+        logging.info(f"Epoch {e}: Train elapsed time={elapsed}")
 
         return train_acc, epoch_spike_rate
 
-    def valid_one_epoch(self, e):
+    def valid_one_epoch(self, e, dataloader, test=False):
         """
         This function tests the model with a single pass over the
-        validation split of the dataset.
+        validation/test set (given via dataloader)
         Returns: validation accuracy (float), spike rate average (float)
         """
         with torch.no_grad():
@@ -447,7 +450,7 @@ class Experiment:
             epoch_spike_rate = 0
 
             # Loop over batches from validation set
-            for step, (x, _, y) in enumerate(self.valid_loader):
+            for step, (x, _, y) in enumerate(dataloader):
 
                 # Dataloader uses cpu to allow pin memory
                 x = x.to(self.device)
@@ -470,73 +473,20 @@ class Experiment:
                     epoch_spike_rate += torch.mean(firing_rates)
 
             # Validation loss of whole epoch
-            valid_loss = np.mean(losses)
-            logging.info(f"Epoch {e}: valid loss={valid_loss}")
-
-            # Validation accuracy of whole epoch
-            valid_acc = np.mean(accs)
-            logging.info(f"Epoch {e}: valid acc={valid_acc}")
+            mean_acc = np.mean(accs)
+            if test:
+                logging.info(f"Test loss={np.mean(losses)}")
+                logging.info(f"Test acc={mean_acc}")
+            else:
+                logging.info(f"Epoch {e}: Valid loss={np.mean(losses)}")
+                logging.info(f"Epoch {e}: Valid acc={mean_acc}")
 
             # Validation spike activity of whole epoch
             if self.net.is_snn:
                 epoch_spike_rate /= step
-                logging.info(f"Epoch {e}: valid mean act rate={epoch_spike_rate}")
+                if test:
+                    logging.info(f"Test mean act rate={epoch_spike_rate}")
+                else:
+                    logging.info(f"Epoch {e}: valid mean act rate={epoch_spike_rate}")
 
-            # Update learning rate
-            self.scheduler.step(valid_acc)
-
-            return valid_acc, epoch_spike_rate
-
-    def test_one_epoch(self, test_loader):
-        """
-        This function tests the model with a single pass over the
-        testing split of the dataset.
-        Returns: test accuracy (float), spike rate average (float)
-        """
-        with torch.no_grad():
-
-            self.net.eval()
-            losses, accs = [], []
-            epoch_spike_rate = 0
-
-            logging.info("\n------ Begin Testing ------\n")
-
-            # Loop over batches from test set
-            for step, (x, _, y) in enumerate(test_loader):
-
-                # Dataloader uses cpu to allow pin memory
-                x = x.to(self.device)
-                y = y.to(self.device)
-
-                # Forward pass through network
-                output, firing_rates = self.net(x)
-
-                # Compute loss
-                loss_val = self.loss_fn(output, y)
-                losses.append(loss_val.item())
-
-                # Compute accuracy with labels
-                pred = torch.argmax(output, dim=1)
-                acc = np.mean((y == pred).detach().cpu().numpy())
-                accs.append(acc)
-
-                # Spike activity
-                if self.net.is_snn:
-                    epoch_spike_rate += torch.mean(firing_rates)
-
-            # Test loss
-            test_loss = np.mean(losses)
-            logging.info(f"Test loss={test_loss}")
-
-            # Test accuracy
-            test_acc = np.mean(accs)
-            logging.info(f"Test acc={test_acc}")
-
-            # Test spike activity
-            if self.net.is_snn:
-                epoch_spike_rate /= step
-                logging.info(f"Test mean act rate={epoch_spike_rate}")
-
-            logging.info("\n-----------------------------\n")
-
-            return test_acc, epoch_spike_rate
+            return mean_acc, epoch_spike_rate
