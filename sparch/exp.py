@@ -192,7 +192,7 @@ class Experiment:
             raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), exp_folder)
 
         # Create folders to store experiment
-        self.log_dir = exp_folder + "/log/"
+        self.log_dir = exp_folder + "/"
         self.checkpoint_dir = exp_folder + "/checkpoints/"
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
