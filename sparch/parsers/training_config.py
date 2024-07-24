@@ -168,6 +168,7 @@ def print_training_options(args):
         Only do testing: {only_do_testing}
         Load experiment folder: {load_exp_folder}
         New experiment folder: {new_exp_folder}
+        Seed: {seed}
         Dataset name: {dataset_name}
         Data folder: {data_folder}
         Log to file: {log_tofile}
