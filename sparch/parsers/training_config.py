@@ -156,6 +156,12 @@ def add_training_options(parser):
         default=1,
         help="Number of trials to run with different seeds.",
     )
+    parser.add_argument(
+        "--gpu",
+        type=int,
+        default=-1,
+        help="CUDA ID of GPU to use"
+    )
     return parser
 
 
@@ -184,6 +190,7 @@ def print_training_options(args):
         Regularization min firing rate: {reg_fmin}
         Reguarization max firing rate: {reg_fmax}
         Use data augmentation: {use_augm}
+        GPU ID: {gpu}
     """.format(
             **vars(args)
         )

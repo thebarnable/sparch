@@ -89,6 +89,9 @@ class Experiment:
         logging.info(f"\nSaving results and trained model in {self.exp_folder}\n")
 
         # Set device
+        if args.gpu != -1:
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+            os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % args.gpu
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"\nDevice is set to {self.device}\n")
 
