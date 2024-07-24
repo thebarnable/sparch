@@ -86,6 +86,8 @@ class Experiment:
         print_model_options(args)
         print_training_options(args)
 
+        logging.info(f"\nSaving results and trained model in {self.exp_folder}\n")
+
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"\nDevice is set to {self.device}\n")
@@ -169,10 +171,8 @@ class Experiment:
         if self.dataset_name in ["sc", "ssc"]:
             test_acc, test_fr = self.valid_one_epoch(e, self.test_loader, test=True)
         else:
+            logging.info("\nThis dataset uses the same split for validation and testing.\n")
             test_acc, test_fr = self.valid_one_epoch(e, self.valid_loader, test=True)
-            logging.info(
-                "\nThis dataset uses the same split for validation and testing.\n"
-            )
         logging.info("\n-----------------------------\n")
 
         # Save results summary
