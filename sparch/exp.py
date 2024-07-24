@@ -72,6 +72,11 @@ class Experiment:
         self.reg_fmin = args.reg_fmin
         self.reg_fmax = args.reg_fmax
         self.use_augm = args.use_augm
+        self.plot_epoch_freq = args.plot_epoch_freq
+        self.plot_classes = [0, 2, 4]
+        self.plot_class_cnt = {p:0 for p in self.plot_classes}
+        self.plot_class_cnt_max = 5
+        self.plot_batch_id = 0
 
         # Set seed
         if args.seed == -1:
@@ -225,8 +230,11 @@ class Experiment:
             raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), exp_folder)
 
         # Create folders to store experiment
+        self.plot_dir = exp_folder + "/plots/"
         self.log_dir = exp_folder + "/"
         self.checkpoint_dir = exp_folder + "/checkpoints/"
+        if not os.path.exists(self.plot_dir):
+            os.makedirs(self.plot_dir)
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
         if not os.path.exists(self.checkpoint_dir):
@@ -427,6 +435,12 @@ class Experiment:
             pred = torch.argmax(output, dim=1)
             acc = np.mean((y == pred).detach().cpu().numpy())
             accs.append(acc)
+
+            # Plot if necessary
+            label=int(y[self.plot_batch_id])
+            if (e-1) % self.plot_epoch_freq == 0 and label in self.plot_classes and self.plot_class_cnt[label] < self.plot_class_cnt_max:
+                self.net.plot(self.plot_dir+f"epoch{e}_class{label}_{self.plot_class_cnt[label]}.png")
+                self.plot_class_cnt[label]+=1
 
         # Learning rate of whole epoch
         current_lr = self.opt.param_groups[-1]["lr"]

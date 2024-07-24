@@ -15,6 +15,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 
 class SpikeFunctionBoxcar(torch.autograd.Function):
@@ -112,6 +113,11 @@ class SNN(nn.Module):
         # Init trainable parameters
         self.snn = self._init_layers()
 
+        # Init arrays for tracking network behavior of last forward() call for batch 0 (firing rates, balance, etc)
+        self.spikes = []
+        self.voltages = []
+        self.currents = []
+
     def _init_layers(self):
 
         snn = nn.ModuleList([])
@@ -155,6 +161,10 @@ class SNN(nn.Module):
         return snn
 
     def forward(self, x):
+        # Reset tracking lists
+        self.spikes = []
+        self.voltages = []
+        self.currents = []
 
         # Reshape input tensors to (batch, time, feats) for 4d inputs
         if self.reshape:
@@ -164,16 +174,73 @@ class SNN(nn.Module):
                 raise NotImplementedError
 
         # Process all layers
-        all_spikes = []
         for i, snn_lay in enumerate(self.snn):
             x = snn_lay(x)
             if not (self.use_readout_layer and i == self.num_layers - 1):
-                all_spikes.append(x)
+                self.spikes.append(x)
 
         # Compute mean firing rate of each spiking neuron
-        firing_rates = torch.cat(all_spikes, dim=2).mean(dim=(0, 1))
+        firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
 
         return x, firing_rates
+    
+    def plot(self, filename):
+        # define colors
+        RED = "#D17171"
+        YELLOW = "#F3A451"
+        GREEN = "#7B9965"
+        BLUE = "#5E7DAF"
+        DARKBLUE = "#3C5E8A"
+        DARKRED = "#A84646"
+        VIOLET = "#886A9B"
+        GREY = "#636363"
+
+        # constants for plotting
+        LAYER = 0
+        BATCH = 0
+
+        # cast data lists to torch tensors
+        spikes = torch.stack(self.spikes)      # layers x batch x time x neurons
+        #voltages = torch.stack(self.voltages)
+        #currents = torch.stack(self.currents)
+
+        spikes = spikes[LAYER, BATCH, :, :]
+
+        # setup spike raster plot
+        t = list(range(0,spikes.shape[0]))
+        SCATTER_MIN=0
+        SCATTER_MAX=self.layer_sizes[LAYER]
+        SCATTER_N_NEURONS=SCATTER_MAX-SCATTER_MIN
+        spike_list = torch.argwhere(spikes[:,SCATTER_MIN:SCATTER_MAX]>0)
+        
+        x_axis = spike_list[:,0].cpu().numpy()
+        y_axis = spike_list[:,1].cpu().numpy()
+        colors = len(spike_list[:,0])*[BLUE]
+
+        # create plots
+        fig, axs = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 3]})
+        fig.subplots_adjust(hspace=0)
+
+        # plot
+        axs[0].plot(t, t, color=GREY, label="V_m")
+        axs[0].legend()
+
+        # b, a = butter(4, 50/(0.5*args.t), btype='low', analog=False)
+        # i_exc_lp = np.array(filtfilt(b, a, i_exc[:, args.plot_neuron]))
+        # i_inh_lp = np.array(filtfilt(b, a, i_inh[:, args.plot_neuron]))
+        axs[1].plot(t, t, color=BLUE, label="i_exc")
+        axs[1].plot(t, t, color=RED, label="-i_inh")
+        axs[1].legend()
+
+        axs[2].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
+        axs[2].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/20)])
+        scatter_yticklabels = list(range(SCATTER_MIN, SCATTER_MAX,2))
+        axs[2].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/20)], fontsize=12)
+
+        plt.xlabel('Timesteps')
+        #plt.show()
+        plt.savefig(filename)
+        plt.close()
 
 
 class LIFLayer(nn.Module):
