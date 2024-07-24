@@ -162,6 +162,18 @@ def add_training_options(parser):
         default=-1,
         help="CUDA ID of GPU to use"
     )
+    parser.add_argument(
+        "--plot",
+        type=lambda x: bool(strtobool(str(x))),
+        default=False,
+        help="Activate plotting of spikes etc",
+    )
+    parser.add_argument(
+        "--plot_epoch_freq",
+        type=int,
+        default=2,
+        help="CUDA ID of GPU to use"
+    )
     return parser
 
 
