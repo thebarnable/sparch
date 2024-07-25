@@ -51,6 +51,7 @@ class Experiment:
         self.normalization = args.normalization
         self.use_bias = False
         self.bidirectional = args.bidirectional
+        self.balance = args.balance
 
         # Training config
         self.use_pretrained_model = args.use_pretrained_model
@@ -365,6 +366,7 @@ class Experiment:
                 use_bias=self.use_bias,
                 bidirectional=self.bidirectional,
                 use_readout_layer=True,
+                balance=self.balance
             ).to(self.device)
 
             logging.info(f"\nCreated new spiking model:\n {self.net}\n")

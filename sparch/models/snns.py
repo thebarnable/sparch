@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from scipy.signal import butter, filtfilt
 
 
 class SpikeFunctionBoxcar(torch.autograd.Function):
@@ -167,7 +168,8 @@ class SNN(nn.Module):
         # Reset tracking lists
         self.spikes = []
         self.voltages = []
-        self.currents = []
+        self.currents_exc = []
+        self.currents_inh = []
 
         # Reshape input tensors to (batch, time, feats) for 4d inputs
         if self.reshape:
@@ -181,6 +183,9 @@ class SNN(nn.Module):
             x = snn_lay(x)
             if not (self.use_readout_layer and i == self.num_layers - 1):
                 self.spikes.append(x)
+                if snn_lay.balance:
+                    self.currents_exc.append(snn_lay.I_exc)
+                    self.currents_inh.append(snn_lay.I_inh)
 
         # Compute mean firing rate of each spiking neuron
         firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
@@ -201,11 +206,11 @@ class SNN(nn.Module):
         # constants for plotting
         LAYER = 0
         BATCH = 0
+        NEURON = 0
 
         # cast data lists to torch tensors
         spikes = torch.stack(self.spikes)      # layers x batch x time x neurons
         #voltages = torch.stack(self.voltages)
-        #currents = torch.stack(self.currents)
 
         spikes = spikes[LAYER, BATCH, :, :]
 
@@ -221,24 +226,27 @@ class SNN(nn.Module):
         colors = len(spike_list[:,0])*[BLUE]
 
         # create plots
-        fig, axs = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 3]})
+        fig, axs = plt.subplots(4, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 3]})
         fig.subplots_adjust(hspace=0)
 
         # plot
-        axs[0].plot(t, t, color=GREY, label="V_m")
-        axs[0].legend()
+        if self.balance:
+            for i in range(0, 3):
+                neuron = i*20
+                currents_exc = torch.stack(self.currents_exc)[LAYER, BATCH, :, neuron].cpu()
+                currents_inh = torch.stack(self.currents_inh)[LAYER, BATCH, :, neuron].cpu()
+                #b, a = butter(4, 0.005/(0.5*spikes.shape[0]), btype='low', analog=False)
+                #currents_exc_lp = np.array(filtfilt(b, a, currents_exc))
+                #currents_inh_lp = np.array(filtfilt(b, a, currents_inh))
+                axs[i].plot(t, currents_exc, color=BLUE, label="i_exc")
+                axs[i].plot(t, -currents_inh, color=RED, label="-i_inh")
+                axs[i].legend()
+                axs[i].set_title("neuron " + str(neuron), y=0.5)
 
-        # b, a = butter(4, 50/(0.5*args.t), btype='low', analog=False)
-        # i_exc_lp = np.array(filtfilt(b, a, i_exc[:, args.plot_neuron]))
-        # i_inh_lp = np.array(filtfilt(b, a, i_inh[:, args.plot_neuron]))
-        axs[1].plot(t, t, color=BLUE, label="i_exc")
-        axs[1].plot(t, t, color=RED, label="-i_inh")
-        axs[1].legend()
-
-        axs[2].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
-        axs[2].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/20)])
+        axs[3].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
+        axs[3].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
         scatter_yticklabels = list(range(SCATTER_MIN, SCATTER_MAX,2))
-        axs[2].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/20)], fontsize=12)
+        axs[3].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=12)
 
         plt.xlabel('Timesteps')
         #plt.show()
@@ -573,13 +581,7 @@ class RLIFLayer(nn.Module):
         self.balance = balance
 
         # Trainable parameters
-        if self.balance:
-            self.W_inh = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-            self.W_exc = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-            self.W_exc.weight.data = torch.where(self.W_inh.weight.data>=0, self.W_inh.weight.data, 0)
-            self.W_inh.weight.data = torch.where(self.W_inh.weight.data<0, self.W_inh.weight.data, 0)
-        else:
-            self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
+        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
         self.V = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
         self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
 
@@ -610,13 +612,16 @@ class RLIFLayer(nn.Module):
             self.batch_size = x.shape[0]
 
         # Feed-forward affine transformations (all steps in parallel)
+        Wx = self.W(x)
         if self.balance:
-            Wx_inh = self.W_inh(x)
-            Wx_exc = self.W_exc(x)
-            Wx = Wx_inh + Wx_exc
-        else:
-            Wx = self.W(x)
-        #I_in_inh, I_in_exc = self._signed_matmul(self.W.weight.detach(), x.detach())
+            with torch.no_grad():
+                self.W_exc = nn.Linear(self.input_size, self.hidden_size, bias=self.use_bias)
+                self.W_exc.weight.data = torch.where(self.W.weight.data>=0, self.W.weight.data, 0)
+                self.W_inh = nn.Linear(self.input_size, self.hidden_size, bias=self.use_bias)
+                self.W_inh.weight.data = torch.where(self.W.weight.data<0, self.W.weight.data, 0)
+
+                Wx_inh = self.W_inh(x)  # = I_in_inh
+                Wx_exc = self.W_exc(x)  # = I_in_exc
 
         # Apply normalization
         if self.normalize:
@@ -635,6 +640,10 @@ class RLIFLayer(nn.Module):
         # Apply dropout
         s = self.drop(s)
 
+        if self.balance:
+            self.I_exc = I_rec_exc+Wx_exc.detach()
+            self.I_inh = I_rec_inh+Wx_inh.detach()
+
         return s
 
     def _rlif_cell(self, Wx):
@@ -644,7 +653,7 @@ class RLIFLayer(nn.Module):
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         s = []
-        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[2], Wx.shape[1]).to(device), torch.zeros(Wx.shape[2], Wx.shape[1]).to(device)
+        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
         alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
@@ -664,15 +673,15 @@ class RLIFLayer(nn.Module):
 
             # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
             if self.balance:
-                I_rec_inh[:, t], I_rec_exc[:, t] = self._signed_matmul(V, st)
+                I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
                 # TODO: V x st equivalence check
 
         return torch.stack(s, dim=1), I_rec_inh, I_rec_exc
 
-    def _signed_matmul(A, B):
+    def _signed_matmul(self, A, B):
         # Compute C:=A x B for matrices A & B, split up into positive and negative components
         # Returns: C_neg (AxB for negative elements of A, rest set to 0), C_pos (AxB for positive elements of A, rest set to 0)
-        return torch.mm(torch.where(A<0, A, 0), B), np.matmul(torch.where(A>=0, A, 0), B)
+        return torch.mm(A, torch.where(B<0, B, 0)), torch.mm(A, torch.where(B>=0, B, 0))
 
 
 class RadLIFLayer(nn.Module):
