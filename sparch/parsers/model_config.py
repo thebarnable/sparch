@@ -50,12 +50,6 @@ def add_model_options(parser):
         "and layernorm will result in no normalization.",
     )
     parser.add_argument(
-        "--use_bias",
-        type=lambda x: bool(strtobool(str(x))),
-        default=False,
-        help="Whether to include trainable bias with feedforward weights.",
-    )
-    parser.add_argument(
         "--bidirectional",
         type=lambda x: bool(strtobool(str(x))),
         default=False,
@@ -75,7 +69,6 @@ def print_model_options(args):
         Number of hidden neurons: {nb_hiddens}
         Dropout rate: {pdrop}
         Normalization: {normalization}
-        Use bias: {use_bias}
         Bidirectional: {bidirectional}
     """.format(
             **vars(args)

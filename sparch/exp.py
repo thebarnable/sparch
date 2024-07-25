@@ -49,7 +49,7 @@ class Experiment:
         self.nb_hiddens = args.nb_hiddens
         self.pdrop = args.pdrop
         self.normalization = args.normalization
-        self.use_bias = args.use_bias
+        self.use_bias = False
         self.bidirectional = args.bidirectional
 
         # Training config
