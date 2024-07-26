@@ -224,6 +224,8 @@ class Experiment:
             outname += "_bdir" if self.bidirectional else "_udir"
             outname += "_reg" if self.use_regularizers else "_noreg"
             outname += "_lr" + str(self.lr)
+            outname += "_st" + str(self.substeps)
+            outname += "_balance" if self.balance else ""
             exp_folder = "exp/" + outname.replace(".", "_") + "/run0"
             while os.path.exists(exp_folder): # if run0 already exists, create run1 (and so on)
                 exp_folder=exp_folder[:-1] + str(int(exp_folder[-1])+1)
