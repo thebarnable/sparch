@@ -174,6 +174,12 @@ def add_training_options(parser):
         default=2,
         help="CUDA ID of GPU to use"
     )
+    parser.add_argument(
+        "--substeps",
+        type=int,
+        default=1,
+        help="Integration substeps (for each sample of the input, we do <substeps> integration steps over neuron states)"
+    )
     return parser
 
 
@@ -202,6 +208,7 @@ def print_training_options(args):
         Regularization min firing rate: {reg_fmin}
         Reguarization max firing rate: {reg_fmax}
         Use data augmentation: {use_augm}
+        Integration substeps: {substeps}
         GPU ID: {gpu}
     """.format(
             **vars(args)
