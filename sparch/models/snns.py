@@ -207,7 +207,10 @@ class SNN(nn.Module):
 
         # Process all layers
         for i, snn_lay in enumerate(self.snn):
-            x = snn_lay(x)
+            if snn_lay.__class__ == RLIFLayer:
+                x = snn_lay(x, i==0) # TODO: i==0 super hacky, only works for RLIF currently
+            else:
+                x = snn_lay(x)
             if not (self.use_readout_layer and i == self.num_layers - 1):
                 self.spikes.append(x)
                 if snn_lay.balance:
@@ -633,7 +636,7 @@ class RLIFLayer(nn.Module):
         # Initialize dropout
         self.drop = nn.Dropout(p=dropout)
 
-    def forward(self, x):
+    def forward(self, x, input_layer):
 
         # Concatenate flipped sequence on batch dim
         if self.bidirectional:
@@ -662,7 +665,7 @@ class RLIFLayer(nn.Module):
             Wx = _Wx.reshape(Wx.shape[0], Wx.shape[1], Wx.shape[2])
 
         # Compute spikes via neuron dynamics
-        s, I_rec_inh, I_rec_exc = self._rlif_cell(Wx)
+        s, I_rec_inh, I_rec_exc = self._rlif_cell(Wx, input_layer)
 
         # Concatenate forward and backward sequences on feat dim
         if self.bidirectional:
@@ -679,7 +682,7 @@ class RLIFLayer(nn.Module):
 
         return s
 
-    def _rlif_cell(self, Wx):
+    def _rlif_cell(self, Wx, input_layer):
 
         # Initializations
         device = Wx.device
@@ -694,11 +697,14 @@ class RLIFLayer(nn.Module):
         # Set diagonal elements of recurrent matrix to zero
         V = self.V.weight.clone().fill_diagonal_(0)
 
+        # Set sub-integration steps
+        substeps = self.substeps if input_layer else 1
+
         # Loop over time axis
         for t in range(Wx.shape[1]):
             
             # Finer loop
-            for tt in range(self.substeps):
+            for tt in range(substeps):
                 # Compute membrane potential (RLIF)
                 ut = alpha * (ut - st) + (1 - alpha) * (Wx[:, t, :] + torch.matmul(st, V))
 
