@@ -73,6 +73,7 @@ class Experiment:
         self.reg_fmin = args.reg_fmin
         self.reg_fmax = args.reg_fmax
         self.use_augm = args.use_augm
+        self.substeps = args.substeps
         self.plot = args.plot
         self.plot_epoch_freq = args.plot_epoch_freq
         self.plot_classes = [0, 2, 4]
@@ -368,7 +369,8 @@ class Experiment:
                 use_bias=self.use_bias,
                 bidirectional=self.bidirectional,
                 use_readout_layer=True,
-                balance=self.balance
+                balance=self.balance,
+                substeps=self.substeps
             ).to(self.device)
 
             logging.info(f"\nCreated new spiking model:\n {self.net}\n")
