@@ -41,9 +41,11 @@ def params_from_file_name(filename):
     IDX_BIAS=6
     IDX_REG=8
     IDX_LR=9
+    IDX_ST=11
+    IDX_BALANCE=12
 
     f=filename.split("/")[-1].split("_")
-    return f[IDX_DATASET], f[IDX_NEURON], f[IDX_LAYER].split("lay")[0], f[IDX_LAYER].split("lay")[1], float(f[IDX_DROPOUT][-1]+"."+f[IDX_DROPOUT+1]), f[IDX_NORM]
+    return f[IDX_DATASET], f[IDX_NEURON], f[IDX_LAYER].split("lay")[0], f[IDX_LAYER].split("lay")[1], float(f[IDX_DROPOUT][-1]+"."+f[IDX_DROPOUT+1]), f[IDX_NORM], int(f[IDX_ST].split("st")[1])
     
 def plot_results():
     # results: ['train_accs', 'train_frs', 'validation_accs', 'validation_frs', 'test_acc', 'test_fr', 'best_acc', 'best_epoch']
@@ -57,13 +59,14 @@ def plot_results():
     colors  = [BLUE,RED,GREEN,YELLOW,VIOLET, DARKRED, DARKBLUE, GREY]
 
     for i,folder in enumerate(folders):
-        # print(f"Analyzing {folder}... ")
+        #print(f"Analyzing {folder}... ")
 
         if not os.path.isdir(folder):
             print("Skipping",folder,"because not a directory")
             continue
         
-        dataset, neuron, n_layers, n_neurons, dropout, norm = params_from_file_name(folder)
+        dataset, neuron, n_layers, n_neurons, dropout, norm, st = params_from_file_name(folder)
+        print(f"Results for {n_layers} layers, {n_neurons} {neuron} neurons on {dataset} (dropout = {dropout}, norm = {norm}, {st} substeps)")
 
         validation_accs = []
         test_accs = []
@@ -71,6 +74,10 @@ def plot_results():
             if "results.pth" in trial_folder[2]:
                 validation_accs.append(torch.tensor(torch.load(trial_folder[0]+"/results.pth")["validation_accs"]))
                 test_accs.append(torch.load(trial_folder[0]+"/results.pth")['test_acc'])
+            
+        if len(validation_accs) == 0:
+            print("Skipping",folder,"because it contains no results!")
+            continue
 
         validation_accs = torch.stack(validation_accs)
         x = list(range(0,validation_accs.shape[1]))
@@ -80,7 +87,6 @@ def plot_results():
         #plt.plot(x, results["train_score"].mean(axis=0), color=colors[i%8], alpha=.1)
         plt.fill_between(x, (y_mean-y_ci), (y_mean+y_ci), color=colors[i%8], alpha=.1)
 
-        print(f"Results for {n_layers} layers, {n_neurons} {neuron} neurons on {dataset} (dropout = {dropout}, norm = {norm})")
         print(f"(1) Highest validation accuracy (total): {validation_accs.max()*100:.2f}%")
         print(f"(2) Highest validation accuracy (avg over trial): {validation_accs.mean(axis=0).max()*100:.2f}%")
         print(f"(3) Average validation accuracy over last 5 epochs (avg over trial): {validation_accs.mean(axis=0)[-5:].mean()*100:.2f}%")
