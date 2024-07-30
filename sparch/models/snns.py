@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
+import gc
 
 class SpikeFunctionBoxcar(torch.autograd.Function):
     """
@@ -688,7 +689,7 @@ class RLIFLayer(nn.Module):
         if self.balance:
             self.I_exc = I_rec_exc+Wx_exc.detach()
             self.I_inh = I_rec_inh+Wx_inh.detach()
-
+        gc.collect()
         return s
 
     def _rlif_cell(self, Wx, input_layer):
