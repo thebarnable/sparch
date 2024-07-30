@@ -18,6 +18,7 @@ import time
 import datetime
 from datetime import timedelta
 import random
+import gc
 
 import numpy as np
 import torch
@@ -159,6 +160,7 @@ class Experiment:
                 validation_accs.append(valid_acc)
                 validation_frs.append(valid_fr)
                 logging.info("\n-----------------------------\n")
+                gc.collect()
 
             logging.info(f"\nBest valid acc at epoch {best_epoch}: {best_acc}\n")
             logging.info("\n------ Training finished ------\n")
