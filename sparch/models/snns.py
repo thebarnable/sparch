@@ -213,9 +213,9 @@ class SNN(nn.Module):
                 x = snn_lay(x)
             if not (self.use_readout_layer and i == self.num_layers - 1):
                 self.spikes.append(x)
-                if snn_lay.balance:
-                    self.currents_exc.append(snn_lay.I_exc)
-                    self.currents_inh.append(snn_lay.I_inh)
+                #if snn_lay.balance:
+                #    self.currents_exc.append(snn_lay.I_exc)
+                #    self.currents_inh.append(snn_lay.I_inh)
 
         # Compute mean firing rate of each spiking neuron
         firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
@@ -656,8 +656,8 @@ class RLIFLayer(nn.Module):
                 self.W_inh = nn.Linear(self.input_size, self.hidden_size, bias=self.use_bias)
                 self.W_inh.weight.data = torch.where(self.W.weight.data<0, self.W.weight.data, 0)
 
-                Wx_inh = self.W_inh(x)  # = I_in_inh
-                Wx_exc = self.W_exc(x)  # = I_in_exc
+                #Wx_inh = self.W_inh(x)  # = I_in_inh
+                #Wx_exc = self.W_exc(x)  # = I_in_exc
 
         # Apply normalization
         if self.normalize:
@@ -676,9 +676,9 @@ class RLIFLayer(nn.Module):
         # Apply dropout
         s = self.drop(s)
 
-        if self.balance:
-            self.I_exc = I_rec_exc+Wx_exc.detach()
-            self.I_inh = I_rec_inh+Wx_inh.detach()
+        #if self.balance:
+        #    self.I_exc = I_rec_exc+Wx_exc.detach()
+        #    self.I_inh = I_rec_inh+Wx_inh.detach()
 
         return s
 
@@ -713,8 +713,8 @@ class RLIFLayer(nn.Module):
                 s.append(st)
 
                 # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
-                if self.balance:
-                    I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
+                #if self.balance:
+                #    I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
                     # TODO: V x st equivalence check
 
         return torch.stack(s, dim=1), I_rec_inh, I_rec_exc
