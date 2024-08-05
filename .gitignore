@@ -1,4 +1,5 @@
 exp/
+.test/
 __pycache__/
 results/
 results_*/
