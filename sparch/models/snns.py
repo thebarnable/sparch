@@ -212,16 +212,16 @@ class SNN(nn.Module):
                 x = snn_lay(x, i==0) # TODO: i==0 super hacky, only works for RLIF currently
             else:
                 x = snn_lay(x)
-            if not (self.use_readout_layer and i == self.num_layers - 1):
-                self.spikes.append(x)
+            #if not (self.use_readout_layer and i == self.num_layers - 1):
+                #self.spikes.append(x)
                 #if snn_lay.balance:
                 #    self.currents_exc.append(snn_lay.I_exc)
                 #    self.currents_inh.append(snn_lay.I_inh)
 
         # Compute mean firing rate of each spiking neuron
-        firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
+        #firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
 
-        return x, firing_rates
+        return x, torch.zeros(self.layer_sizes[0])# firing_rates
     
     def plot(self, filename):
         # define colors
