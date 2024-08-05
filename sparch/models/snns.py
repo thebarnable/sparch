@@ -81,17 +81,13 @@ class SNN(nn.Module):
         Shape of an input example.
     layer_sizes : int list
         List of number of neurons in all hidden layers
-    neuron_type : str
+    model_type : str
         Type of neuron model, either 'LIF', 'adLIF', 'RLIF' or 'RadLIF'.
-    threshold : float
-        Fixed threshold value for the membrane potential.
     dropout : float
         Dropout rate (must be between 0 and 1).
     normalization : str
         Type of normalization (batchnorm, layernorm). Every string different
         from batchnorm and layernorm will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
     bidirectional : bool
         If True, a bidirectional model that scans the sequence both directions
         is used, which doubles the size of feedforward matrices in layers l>0.
@@ -105,74 +101,48 @@ class SNN(nn.Module):
 
     def __init__(
         self,
-        input_shape,
-        layer_sizes,
-        neuron_type="LIF",
-        threshold=1.0,
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
-        bidirectional=False,
-        use_readout_layer=True,
-        balance=False,
-        substeps=1
+        args
     ):
         super().__init__()
 
-        # Fixed parameters
-        self.reshape = True if len(input_shape) > 3 else False
-        self.input_size = float(torch.prod(torch.tensor(input_shape[2:])))
-        self.batch_size = input_shape[0]
-        self.layer_sizes = layer_sizes
-        self.num_layers = len(layer_sizes)
-        self.num_outputs = layer_sizes[-1]
-        self.neuron_type = neuron_type
-        self.threshold = threshold
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
-        self.bidirectional = bidirectional
-        self.use_readout_layer = use_readout_layer
+        self.reshape = True if len(args.input_shape) > 3 else False
+        self.input_size = float(torch.prod(torch.tensor(args.input_shape[2:])))
+        self.layer_sizes = args.layer_sizes
+        self.bidirectional = args.bidirectional
+        self.use_readout_layer = True
         self.is_snn = True
-        self.balance = balance
-        self.substeps = substeps
+        self.balance = args.balance
+        self.substeps = args.substeps
 
-        if neuron_type not in ["LIF", "adLIF", "RLIF", "RadLIF"]:
-            raise ValueError(f"Invalid neuron type {neuron_type}")
+        if args.model_type not in ["LIF", "adLIF", "RLIF", "RadLIF"]:
+            raise ValueError(f"Invalid neuron type {args.model_type}")
 
         # Init trainable parameters
-        self.snn = self._init_layers()
+        self.snn = self._init_layers(args)
 
         # Init arrays for tracking network behavior of last forward() call for batch 0 (firing rates, balance, etc)
         self.spikes = []
         self.voltages = []
         self.currents = []
 
-    def _init_layers(self):
+    def _init_layers(self, args):
 
         snn = nn.ModuleList([])
         input_size = self.input_size
-        snn_class = self.neuron_type + "Layer"
+        snn_class = args.model_type + "Layer"
 
         if self.use_readout_layer:
-            num_hidden_layers = self.num_layers - 1
+            num_hidden_layers = len(args.layer_sizes) - 1
         else:
-            num_hidden_layers = self.num_layers
+            num_hidden_layers = len(args.layer_sizes)
 
         # Hidden layers
         for i in range(num_hidden_layers):
             snn.append(
                 globals()[snn_class](
-                    input_size=input_size,
-                    hidden_size=self.layer_sizes[i],
-                    batch_size=self.batch_size,
-                    threshold=self.threshold,
-                    dropout=self.dropout,
-                    normalization=self.normalization,
-                    use_bias=self.use_bias,
-                    bidirectional=self.bidirectional,
-                    balance=self.balance,
-                    substeps=self.substeps
+                    input_size=int(input_size),
+                    hidden_size=int(self.layer_sizes[i]),
+                    args=args
                 )
             )
             input_size = self.layer_sizes[i] * (1 + self.bidirectional)
@@ -181,12 +151,9 @@ class SNN(nn.Module):
         if self.use_readout_layer:
             snn.append(
                 ReadoutLayer(
-                    input_size=input_size,
-                    hidden_size=self.layer_sizes[-1],
-                    batch_size=self.batch_size,
-                    dropout=self.dropout,
-                    normalization=self.normalization,
-                    use_bias=self.use_bias,
+                    input_size=int(input_size),
+                    hidden_size=int(self.layer_sizes[-1]),
+                    args=args
                 )
             )
 
@@ -212,7 +179,7 @@ class SNN(nn.Module):
                 x = snn_lay(x, i==0) # TODO: i==0 super hacky, only works for RLIF currently
             else:
                 x = snn_lay(x)
-            if not (self.use_readout_layer and i == self.num_layers - 1):
+            if not snn_lay.__class__ == ReadoutLayer:
                 self.spikes.append(x)
                 if snn_lay.balance:
                     self.currents_exc.append(snn_lay.I_exc)
@@ -298,15 +265,11 @@ class LIFLayer(nn.Module):
         Number of output neurons.
     batch_size : int
         Batch size of the input tensors.
-    threshold : float
-        Value of spiking threshold (fixed)
     dropout : float
         Dropout factor (must be between 0 and 1).
     normalization : str
         Type of normalization. Every string different from 'batchnorm'
         and 'layernorm' will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
     bidirectional : bool
         If True, a bidirectional model that scans the sequence both directions
         is used, which doubles the size of feedforward matrices in layers l>0.
@@ -316,47 +279,34 @@ class LIFLayer(nn.Module):
         self,
         input_size,
         hidden_size,
-        batch_size,
-        threshold=1.0,
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
-        bidirectional=False,
-        balance=False,
-        substeps=1
+        args
     ):
         super().__init__()
 
         # Fixed parameters
-        self.input_size = int(input_size)
-        self.hidden_size = int(hidden_size)
-        self.batch_size = batch_size
-        self.threshold = threshold
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
-        self.bidirectional = bidirectional
-        self.batch_size = self.batch_size * (1 + self.bidirectional)
+        self.batch_size = args.batch_size * (1 + args.bidirectional)
+        self.bidirectional = args.bidirectional
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.spike_fct = SpikeFunctionBoxcar.apply
-        self.substeps = substeps
+        self.substeps = args.substeps
+        self.threshold = 1.0
 
         # Trainable parameters
-        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-        self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.W = nn.Linear(input_size, hidden_size, bias=False)
+        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
         nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
 
         # Initialize normalization
         self.normalize = False
-        if normalization == "batchnorm":
-            self.norm = nn.BatchNorm1d(self.hidden_size, momentum=0.05)
+        if args.normalization == "batchnorm":
+            self.norm = nn.BatchNorm1d(hidden_size, momentum=0.05)
             self.normalize = True
-        elif normalization == "layernorm":
-            self.norm = nn.LayerNorm(self.hidden_size)
+        elif args.normalization == "layernorm":
+            self.norm = nn.LayerNorm(hidden_size)
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=dropout)
+        self.drop = nn.Dropout(p=args.pdrop)
 
     def forward(self, x):
 
@@ -428,15 +378,11 @@ class adLIFLayer(nn.Module):
         Number of output neurons.
     batch_size : int
         Batch size of the input tensors.
-    threshold : float
-        Value of spiking threshold (fixed)
     dropout : float
         Dropout factor (must be between 0 and 1).
     normalization : str
         Type of normalization. Every string different from 'batchnorm'
         and 'layernorm' will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
     bidirectional : bool
         If True, a bidirectional model that scans the sequence both directions
         is used, which doubles the size of feedforward matrices in layers l>0.
@@ -446,40 +392,27 @@ class adLIFLayer(nn.Module):
         self,
         input_size,
         hidden_size,
-        batch_size,
-        threshold=1.0,
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
-        bidirectional=False,
-        balance=False,
-        substeps=1
+        args
     ):
         super().__init__()
 
         # Fixed parameters
-        self.input_size = int(input_size)
-        self.hidden_size = int(hidden_size)
-        self.batch_size = batch_size
-        self.threshold = threshold
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
-        self.bidirectional = bidirectional
-        self.batch_size = self.batch_size * (1 + self.bidirectional)
+        self.bidirectional = args.bidirectional
+        self.batch_size = args.batch_size * (1 + self.bidirectional)
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.beta_lim = [np.exp(-1 / 30), np.exp(-1 / 120)]
         self.a_lim = [-1.0, 1.0]
         self.b_lim = [0.0, 2.0]
         self.spike_fct = SpikeFunctionBoxcar.apply
-        self.substeps = substeps
+        self.substeps = args.substeps
+        self.threshold = 1.0
 
         # Trainable parameters
-        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-        self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
-        self.beta = nn.Parameter(torch.Tensor(self.hidden_size))
-        self.a = nn.Parameter(torch.Tensor(self.hidden_size))
-        self.b = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.W = nn.Linear(input_size, hidden_size, bias=False)
+        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
+        self.beta = nn.Parameter(torch.Tensor(hidden_size))
+        self.a = nn.Parameter(torch.Tensor(hidden_size))
+        self.b = nn.Parameter(torch.Tensor(hidden_size))
 
         nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
         nn.init.uniform_(self.beta, self.beta_lim[0], self.beta_lim[1])
@@ -488,15 +421,15 @@ class adLIFLayer(nn.Module):
 
         # Initialize normalization
         self.normalize = False
-        if normalization == "batchnorm":
-            self.norm = nn.BatchNorm1d(self.hidden_size, momentum=0.05)
+        if args.normalization == "batchnorm":
+            self.norm = nn.BatchNorm1d(hidden_size, momentum=0.05)
             self.normalize = True
-        elif normalization == "layernorm":
-            self.norm = nn.LayerNorm(self.hidden_size)
+        elif args.normalization == "layernorm":
+            self.norm = nn.LayerNorm(hidden_size)
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=dropout)
+        self.drop = nn.Dropout(p=args.pdrop)
 
     def forward(self, x):
 
@@ -573,15 +506,11 @@ class RLIFLayer(nn.Module):
         Number of output neurons.
     batch_size : int
         Batch size of the input tensors.
-    threshold : float
-        Value of spiking threshold (fixed)
     dropout : float
         Dropout factor (must be between 0 and 1).
     normalization : str
         Type of normalization. Every string different from 'batchnorm'
         and 'layernorm' will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
     bidirectional : bool
         If True, a bidirectional model that scans the sequence both directions
         is used, which doubles the size of feedforward matrices in layers l>0.
@@ -591,36 +520,25 @@ class RLIFLayer(nn.Module):
         self,
         input_size,
         hidden_size,
-        batch_size,
-        threshold=1.0,
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
-        bidirectional=False,
-        balance=False,
-        substeps=1
+        args
     ):
         super().__init__()
 
         # Fixed parameters
-        self.input_size = int(input_size)
-        self.hidden_size = int(hidden_size)
-        self.batch_size = batch_size
-        self.threshold = threshold
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
-        self.bidirectional = bidirectional
-        self.batch_size = self.batch_size * (1 + self.bidirectional)
+        self.bidirectional = args.bidirectional
+        self.batch_size = args.batch_size * (1 + self.bidirectional)
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
-        self.balance = balance
-        self.spike_fct = SpikeFunctionBoxcar.apply if balance is False else SingleSpikeFunctionBoxcar.apply
-        self.substeps = substeps
+        self.balance = args.balance
+        self.spike_fct = SpikeFunctionBoxcar.apply if args.balance is False else SingleSpikeFunctionBoxcar.apply
+        self.substeps = args.substeps
+        self.threshold = 1.0
+        self.input_size = input_size
+        self.hidden_size = hidden_size
 
         # Trainable parameters
-        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-        self.V = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-        self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.W = nn.Linear(input_size, hidden_size, bias=False)
+        self.V = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
 
         nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
         nn.init.orthogonal_(self.V.weight)
@@ -631,15 +549,15 @@ class RLIFLayer(nn.Module):
 
         # Initialize normalization
         self.normalize = False
-        if normalization == "batchnorm":
-            self.norm = nn.BatchNorm1d(self.hidden_size, momentum=0.05)
+        if args.normalization == "batchnorm":
+            self.norm = nn.BatchNorm1d(hidden_size, momentum=0.05)
             self.normalize = True
-        elif normalization == "layernorm":
-            self.norm = nn.LayerNorm(self.hidden_size)
+        elif args.normalization == "layernorm":
+            self.norm = nn.LayerNorm(hidden_size)
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=dropout)
+        self.drop = nn.Dropout(p=args.pdrop)
 
     def forward(self, x, input_layer):
 
@@ -746,15 +664,11 @@ class RadLIFLayer(nn.Module):
         Number of output neurons.
     batch_size : int
         Batch size of the input tensors.
-    threshold : float
-        Value of spiking threshold (fixed)
     dropout : float
         Dropout factor (must be between 0 and 1).
     normalization : str
         Type of normalization. Every string different from 'batchnorm'
         and 'layernorm' will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
     bidirectional : bool
         If True, a bidirectional model that scans the sequence both directions
         is used, which doubles the size of feedforward matrices in layers l>0.
@@ -764,39 +678,27 @@ class RadLIFLayer(nn.Module):
         self,
         input_size,
         hidden_size,
-        batch_size,
-        threshold=1.0,
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
-        bidirectional=False,
-        balance=False
+        args
     ):
         super().__init__()
 
         # Fixed parameters
-        self.input_size = int(input_size)
-        self.hidden_size = int(hidden_size)
-        self.batch_size = batch_size
-        self.threshold = threshold
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
-        self.bidirectional = bidirectional
-        self.batch_size = self.batch_size * (1 + self.bidirectional)
+        self.bidirectional = args.bidirectional
+        self.batch_size = args.batch_size * (1 + self.bidirectional)
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.beta_lim = [np.exp(-1 / 30), np.exp(-1 / 120)]
         self.a_lim = [-1.0, 1.0]
         self.b_lim = [0.0, 2.0]
         self.spike_fct = SpikeFunctionBoxcar.apply
+        self.threshold = 1.0
 
         # Trainable parameters
-        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-        self.V = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-        self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
-        self.beta = nn.Parameter(torch.Tensor(self.hidden_size))
-        self.a = nn.Parameter(torch.Tensor(self.hidden_size))
-        self.b = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.W = nn.Linear(input_size, hidden_size, bias=False)
+        self.V = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
+        self.beta = nn.Parameter(torch.Tensor(hidden_size))
+        self.a = nn.Parameter(torch.Tensor(hidden_size))
+        self.b = nn.Parameter(torch.Tensor(hidden_size))
 
         nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
         nn.init.uniform_(self.beta, self.beta_lim[0], self.beta_lim[1])
@@ -806,15 +708,15 @@ class RadLIFLayer(nn.Module):
 
         # Initialize normalization
         self.normalize = False
-        if normalization == "batchnorm":
-            self.norm = nn.BatchNorm1d(self.hidden_size, momentum=0.05)
+        if args.normalization == "batchnorm":
+            self.norm = nn.BatchNorm1d(hidden_size, momentum=0.05)
             self.normalize = True
-        elif normalization == "layernorm":
-            self.norm = nn.LayerNorm(self.hidden_size)
+        elif args.normalization == "layernorm":
+            self.norm = nn.LayerNorm(hidden_size)
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=dropout)
+        self.drop = nn.Dropout(p=args.pdrop)
 
     def forward(self, x):
 
@@ -902,8 +804,6 @@ class ReadoutLayer(nn.Module):
     normalization : str
         Type of normalization. Every string different from 'batchnorm'
         and 'layernorm' will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
     bidirectional : bool
         If True, a bidirectional model that scans the sequence both directions
         is used, which doubles the size of feedforward matrices in layers l>0.
@@ -913,38 +813,29 @@ class ReadoutLayer(nn.Module):
         self,
         input_size,
         hidden_size,
-        batch_size,
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
+        args,
     ):
         super().__init__()
 
         # Fixed parameters
-        self.input_size = int(input_size)
-        self.hidden_size = int(hidden_size)
-        self.batch_size = batch_size
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
 
         # Trainable parameters
-        self.W = nn.Linear(self.input_size, self.hidden_size, bias=use_bias)
-        self.alpha = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.W = nn.Linear(input_size, hidden_size, bias=False)
+        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
         nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
 
         # Initialize normalization
         self.normalize = False
-        if normalization == "batchnorm":
-            self.norm = nn.BatchNorm1d(self.hidden_size, momentum=0.05)
+        if args.normalization == "batchnorm":
+            self.norm = nn.BatchNorm1d(hidden_size, momentum=0.05)
             self.normalize = True
-        elif normalization == "layernorm":
-            self.norm = nn.LayerNorm(self.hidden_size)
+        elif args.normalization == "layernorm":
+            self.norm = nn.LayerNorm(hidden_size)
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=dropout)
+        self.drop = nn.Dropout(p=args.pdrop)
 
     def forward(self, x):
 
