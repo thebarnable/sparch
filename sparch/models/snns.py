@@ -695,10 +695,11 @@ class RLIFLayer(nn.Module):
     def _rlif_cell(self, Wx, input_layer):
 
         # Initializations
+        substeps = self.substeps if input_layer else 1
         device = Wx.device
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
-        s = []
+        s = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
         I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
@@ -706,9 +707,6 @@ class RLIFLayer(nn.Module):
 
         # Set diagonal elements of recurrent matrix to zero
         V = self.V.weight.clone().fill_diagonal_(0)
-
-        # Set sub-integration steps
-        substeps = self.substeps if input_layer else 1
 
         # Loop over time axis
         for t in range(Wx.shape[1]):
@@ -720,14 +718,14 @@ class RLIFLayer(nn.Module):
 
                 # Compute spikes with surrogate gradient
                 st = self.spike_fct(ut - self.threshold)
-                s.append(st)
+                s[:, substeps*t + tt, :] = st
 
                 # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
                 if self.balance:
                     I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
                     # TODO: V x st equivalence check
 
-        return torch.stack(s, dim=1), I_rec_inh, I_rec_exc
+        return s, I_rec_inh, I_rec_exc
 
     def _signed_matmul(self, A, B):
         # Compute C:=A x B for matrices A & B, split up into positive and negative components
