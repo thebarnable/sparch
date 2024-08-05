@@ -50,7 +50,6 @@ class Experiment:
         self.nb_hiddens = args.nb_hiddens
         self.pdrop = args.pdrop
         self.normalization = args.normalization
-        self.use_bias = False
         self.bidirectional = args.bidirectional
         self.balance = args.balance
 
@@ -106,7 +105,7 @@ class Experiment:
 
         # Initialize dataloaders and model
         self.init_dataset()
-        self.init_model()
+        self.init_model(args)
 
         # Define optimizer
         self.opt = torch.optim.Adam(self.net.parameters(), self.lr)
@@ -222,7 +221,7 @@ class Experiment:
             outname = self.dataset_name + "_" + self.model_type + "_"
             outname += str(self.nb_layers) + "lay" + str(self.nb_hiddens)
             outname += "_drop" + str(self.pdrop) + "_" + str(self.normalization)
-            outname += "_bias" if self.use_bias else "_nobias"
+            outname += "_nobias"
             outname += "_bdir" if self.bidirectional else "_udir"
             outname += "_reg" if self.use_regularizers else "_noreg"
             outname += "_lr" + str(self.lr)
@@ -350,56 +349,29 @@ class Experiment:
         else:
             raise ValueError(f"Invalid dataset name {self.dataset_name}")
 
-    def init_model(self):
+    def init_model(self, args):
         """
         This function either loads pretrained model or builds a
         new model (ANN or SNN) depending on chosen config.
         """
-        input_shape = (self.batch_size, None, self.nb_inputs)
-        layer_sizes = [self.nb_hiddens] * (self.nb_layers - 1) + [self.nb_outputs]
+        args.input_shape = (self.batch_size, None, self.nb_inputs)
+        args.layer_sizes = [self.nb_hiddens] * (self.nb_layers - 1) + [self.nb_outputs]
 
         if self.use_pretrained_model:
             self.net = torch.load(self.load_path, map_location=self.device)
             logging.info(f"\nLoaded model at: {self.load_path}\n {self.net}\n")
-
         elif self.model_type in ["LIF", "adLIF", "RLIF", "RadLIF"]:
-
-            self.net = SNN(
-                input_shape=input_shape,
-                layer_sizes=layer_sizes,
-                neuron_type=self.model_type,
-                dropout=self.pdrop,
-                normalization=self.normalization,
-                use_bias=self.use_bias,
-                bidirectional=self.bidirectional,
-                use_readout_layer=True,
-                balance=self.balance,
-                substeps=self.substeps
-            ).to(self.device)
-
+            self.net = SNN(args).to(self.device)
             logging.info(f"\nCreated new spiking model:\n {self.net}\n")
-
         elif self.model_type in ["MLP", "RNN", "LiGRU", "GRU"]:
-
-            self.net = ANN(
-                input_shape=input_shape,
-                layer_sizes=layer_sizes,
-                ann_type=self.model_type,
-                dropout=self.pdrop,
-                normalization=self.normalization,
-                use_bias=self.use_bias,
-                bidirectional=self.bidirectional,
-                use_readout_layer=True,
-            ).to(self.device)
-
+            self.net = ANN(args).to(self.device)
             logging.info(f"\nCreated new non-spiking model:\n {self.net}\n")
-
         else:
             raise ValueError(f"Invalid model type {self.model_type}")
 
-        self.nb_params = sum(
-            p.numel() for p in self.net.parameters() if p.requires_grad
-        )
+        self.nb_params = sum(p.numel() for p in self.net.parameters() if p.requires_grad)
+        self.input_shape = args.input_shape
+        self.layer_sizes = args.layer_sizes
         logging.info(f"Total number of trainable parameters is {self.nb_params}")
 
     def train_one_epoch(self, e):
