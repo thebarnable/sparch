@@ -126,6 +126,7 @@ class Experiment:
         This function performs model training with the configuration
         specified by the class initialization.
         """
+        e=0
         if not self.only_do_testing:
             # Initialize best accuracy
             if self.use_pretrained_model:
