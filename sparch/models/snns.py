@@ -605,8 +605,8 @@ class RLIFLayer(nn.Module):
         s = self.drop(s)
 
         if self.balance:
-            self.I_exc = I_rec_exc+Wx_exc.detach()
-            self.I_inh = I_rec_inh+Wx_inh.detach()
+            self.I_exc = I_rec_exc+torch.repeat_interleave(Wx_exc.detach(), self.substeps, dim=1)
+            self.I_inh = I_rec_inh+torch.repeat_interleave(Wx_inh.detach(), self.substeps, dim=1)
         gc.collect()
         return s
 
@@ -618,7 +618,7 @@ class RLIFLayer(nn.Module):
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         s = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
-        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
+        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
         alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
@@ -640,7 +640,7 @@ class RLIFLayer(nn.Module):
 
                 # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
                 if self.balance:
-                    I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
+                    I_rec_inh[:, substeps*t + tt, :], I_rec_exc[:, substeps*t + tt, :] = self._signed_matmul(st.detach(), V.detach())
                     # TODO: V x st equivalence check
 
         return s, I_rec_inh, I_rec_exc
