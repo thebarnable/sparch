@@ -205,6 +205,7 @@ class SNN(nn.Module):
         LAYER = 0
         BATCH = 0
         NEURON = 0
+        N_NEURONS_TO_PLOT=10
 
         # cast data lists to torch tensors
         spikes = torch.stack(self.spikes)      # layers x batch x time x neurons
@@ -224,13 +225,13 @@ class SNN(nn.Module):
         colors = len(spike_list[:,0])*[BLUE]
 
         # create plots
-        fig, axs = plt.subplots(4, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 3]})
+        fig, axs = plt.subplots(1+N_NEURONS_TO_PLOT, 1, sharex=True, gridspec_kw={'height_ratios': N_NEURONS_TO_PLOT*[1] + [3]})
         fig.subplots_adjust(hspace=0)
 
         # plot
         if self.balance:
-            for i in range(0, 3):
-                neuron = i*20
+            for i in range(0, N_NEURONS_TO_PLOT):
+                neuron = i*7
                 currents_exc = torch.stack(self.currents_exc)[LAYER, BATCH, :, neuron].cpu()
                 currents_inh = torch.stack(self.currents_inh)[LAYER, BATCH, :, neuron].cpu()
                 #b, a = butter(4, 0.005/(0.5*spikes.shape[0]), btype='low', analog=False)
@@ -238,13 +239,14 @@ class SNN(nn.Module):
                 #currents_inh_lp = np.array(filtfilt(b, a, currents_inh))
                 axs[i].plot(t, currents_exc, color=BLUE, label="i_exc")
                 axs[i].plot(t, -currents_inh, color=RED, label="-i_inh")
-                axs[i].legend()
-                axs[i].set_title("neuron " + str(neuron), y=0.5)
+                if i==0:
+                    axs[i].legend()
+                    axs[i].set_title("neuron " + str(neuron), y=0.5)
 
-        axs[3].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
-        axs[3].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
+        axs[N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
+        axs[N_NEURONS_TO_PLOT].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
         scatter_yticklabels = list(range(SCATTER_MIN, SCATTER_MAX,2))
-        axs[3].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=12)
+        axs[N_NEURONS_TO_PLOT].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=12)
 
         plt.xlabel('Timesteps')
         #plt.show()
