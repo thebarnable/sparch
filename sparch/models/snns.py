@@ -184,6 +184,7 @@ class SNN(nn.Module):
                 if snn_lay.balance:
                     self.currents_exc.append(snn_lay.I_exc)
                     self.currents_inh.append(snn_lay.I_inh)
+                    self.voltages.append(snn_lay.v)
 
         # Compute mean firing rate of each spiking neuron
         firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
@@ -205,13 +206,10 @@ class SNN(nn.Module):
         LAYER = 0
         BATCH = 0
         NEURON = 0
-        N_NEURONS_TO_PLOT=10
+        N_NEURONS_TO_PLOT=6
 
         # cast data lists to torch tensors
-        spikes = torch.stack(self.spikes)      # layers x batch x time x neurons
-        #voltages = torch.stack(self.voltages)
-
-        spikes = spikes[LAYER, BATCH, :, :]
+        spikes = torch.stack(self.spikes)[LAYER, BATCH, :, :]      # layers x batch x time x neurons
 
         # setup spike raster plot
         t = list(range(0,spikes.shape[0]))
@@ -225,32 +223,36 @@ class SNN(nn.Module):
         colors = len(spike_list[:,0])*[BLUE]
 
         # create plots
-        fig, axs = plt.subplots(1+N_NEURONS_TO_PLOT, 1, sharex=True, gridspec_kw={'height_ratios': N_NEURONS_TO_PLOT*[1] + [3]})
+        plt.rc('xtick', labelsize=8) #fontsize of the x tick labels
+        plt.rc('ytick', labelsize=8) #fontsize of the y tick labels
+        fig, axs = plt.subplots(1+N_NEURONS_TO_PLOT*2, 1, sharex=True, gridspec_kw={'height_ratios': 2*N_NEURONS_TO_PLOT*[1] + [5]})
         fig.subplots_adjust(hspace=0)
 
         # plot
         if self.balance:
-            for i in range(0, N_NEURONS_TO_PLOT):
+            for i in range(0, 2*N_NEURONS_TO_PLOT, 2):
                 neuron = i*7
                 currents_exc = torch.stack(self.currents_exc)[LAYER, BATCH, :, neuron].cpu()
                 currents_inh = torch.stack(self.currents_inh)[LAYER, BATCH, :, neuron].cpu()
+                v = torch.stack(self.voltages)[LAYER, BATCH, :, neuron].cpu()
                 #b, a = butter(4, 0.005/(0.5*spikes.shape[0]), btype='low', analog=False)
                 #currents_exc_lp = np.array(filtfilt(b, a, currents_exc))
                 #currents_inh_lp = np.array(filtfilt(b, a, currents_inh))
                 axs[i].plot(t, currents_exc, color=BLUE, label="i_exc")
                 axs[i].plot(t, -currents_inh, color=RED, label="-i_inh")
+                axs[i+1].plot(t, v, color=GREY, label="v")
+                axs[i].set_title("neuron " + str(neuron), y=0.5)
                 if i==0:
                     axs[i].legend()
-                    axs[i].set_title("neuron " + str(neuron), y=0.5)
 
-        axs[N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
-        axs[N_NEURONS_TO_PLOT].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
+        axs[2*N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=5)
+        axs[2*N_NEURONS_TO_PLOT].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
         scatter_yticklabels = list(range(SCATTER_MIN, SCATTER_MAX,2))
-        axs[N_NEURONS_TO_PLOT].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=12)
+        axs[2*N_NEURONS_TO_PLOT].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=8)
 
         plt.xlabel('Timesteps')
         #plt.show()
-        plt.savefig(filename)
+        plt.savefig(filename, dpi=250)
         plt.close()
 
 
@@ -617,6 +619,7 @@ class RLIFLayer(nn.Module):
         # Initializations
         substeps = self.substeps if input_layer else 1
         device = Wx.device
+        self.v = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         s = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
@@ -633,8 +636,9 @@ class RLIFLayer(nn.Module):
             
             # Finer loop
             for tt in range(substeps):
-                # Compute membrane potential (RLIF)
+                # Compute and save membrane potential (RLIF)
                 ut = alpha * (ut - st) + (1 - alpha) * (Wx[:, t, :] + torch.matmul(st, V))
+                self.v[:, substeps*t + tt, :] = ut.detach()
 
                 # Compute spikes with surrogate gradient
                 st = self.spike_fct(ut - self.threshold)
