@@ -206,7 +206,8 @@ class SNN(nn.Module):
         LAYER = 0
         BATCH = 0
         NEURON = 0
-        N_NEURONS_TO_PLOT=6
+        NEURONS_TO_PLOT=[0,1,10,121]
+        N_NEURONS_TO_PLOT=len(NEURONS_TO_PLOT)
 
         # cast data lists to torch tensors
         spikes = torch.stack(self.spikes)[LAYER, BATCH, :, :]      # layers x batch x time x neurons
@@ -218,9 +219,15 @@ class SNN(nn.Module):
         SCATTER_N_NEURONS=SCATTER_MAX-SCATTER_MIN
         spike_list = torch.argwhere(spikes[:,SCATTER_MIN:SCATTER_MAX]>0)
         
+        ## get raster plot for all spikes
         x_axis = spike_list[:,0].cpu().numpy()
         y_axis = spike_list[:,1].cpu().numpy()
         colors = len(spike_list[:,0])*[BLUE]
+
+        idx=torch.isin(spike_list[:,1], torch.tensor(NEURONS_TO_PLOT))
+        x_axis_2 = spike_list[idx][:,0].cpu().numpy()
+        y_axis_2 = spike_list[idx][:,1].cpu().numpy()
+        colors_2 = len(spike_list[idx][:,0])*[RED]
 
         # create plots
         plt.rc('xtick', labelsize=8) #fontsize of the x tick labels
@@ -231,13 +238,13 @@ class SNN(nn.Module):
         # plot
         if self.balance:
             for i in range(0, 2*N_NEURONS_TO_PLOT, 2):
-                neuron = i*7
+                neuron = NEURONS_TO_PLOT[int(i/2)]
                 currents_exc = torch.stack(self.currents_exc)[LAYER, BATCH, :, neuron].cpu()
                 currents_inh = torch.stack(self.currents_inh)[LAYER, BATCH, :, neuron].cpu()
                 v = torch.stack(self.voltages)[LAYER, BATCH, :, neuron].cpu()
-                #b, a = butter(4, 0.005/(0.5*spikes.shape[0]), btype='low', analog=False)
-                #currents_exc_lp = np.array(filtfilt(b, a, currents_exc))
-                #currents_inh_lp = np.array(filtfilt(b, a, currents_inh))
+                b, a = butter(4, 100/(0.5*spikes.shape[0]), btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
+                #currents_exc = np.array(filtfilt(b, a, currents_exc))
+                #currents_inh = np.array(filtfilt(b, a, currents_inh))
                 axs[i].plot(t, currents_exc, color=BLUE, label="i_exc")
                 axs[i].plot(t, -currents_inh, color=RED, label="-i_inh")
                 axs[i+1].plot(t, v, color=GREY, label="v")
@@ -245,7 +252,8 @@ class SNN(nn.Module):
                 if i==0:
                     axs[i].legend()
 
-        axs[2*N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=5)
+        axs[2*N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=8)
+        axs[2*N_NEURONS_TO_PLOT].scatter(x_axis_2, y_axis_2, c=colors_2, marker = "o", s=8)
         axs[2*N_NEURONS_TO_PLOT].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
         scatter_yticklabels = list(range(SCATTER_MIN, SCATTER_MAX,2))
         axs[2*N_NEURONS_TO_PLOT].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=8)
