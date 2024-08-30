@@ -113,6 +113,15 @@ def main(args):
   if args.alemi:
     w_slow = np.zeros_like(w_fast)
 
+  if args.track_balance:
+    w_fast_neg = np.where(w_fast<0, w_fast, 0)
+    w_fast_pos = np.where(w_fast>=0, w_fast, 0)
+    w_slow_neg = np.where(w_slow<0, w_slow, 0)
+    w_slow_pos = np.where(w_slow>=0, w_slow, 0)
+    w_in_neg = np.where(w_in<0, w_in, 0)
+    w_in_pos = np.where(w_in>=0, w_in, 0)
+
+
   print("### Balanced Spiking Neural Network ###")
   print("# Arguments")
   print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
@@ -132,14 +141,14 @@ def main(args):
     i_exc = np.zeros([t, N])
     for k in tqdm(range(t-1), desc="# Simulation"):
       if args.track_balance:
-        i_fast_inh = np.matmul(np.where(w_fast<0, w_fast, 0), o[k])
-        i_fast_exc = np.matmul(np.where(w_fast>=0, w_fast, 0), o[k])
-        i_slow_inh = np.matmul(np.where(w_slow<0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
-        i_slow_exc = np.matmul(np.where(w_slow>=0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
-        i_in_inh = np.matmul(np.where(w_in<0, w_in, 0), np.where(c[k]>=0, c[k], 0))  # c can be negative, so we need to use np.where for it to make sure we only use negative weights
-        i_in_inh += np.matmul(np.where(w_in>=0, w_in, 0), np.where(c[k]<0, c[k], 0))
-        i_in_exc = np.matmul(np.where(w_in<0, w_in, 0), np.where(c[k]<0, c[k], 0))
-        i_in_exc += np.matmul(np.where(w_in>=0, w_in, 0), np.where(c[k]>=0, c[k], 0))
+        i_fast_inh = np.matmul(w_fast_neg, o[k])
+        i_fast_exc = np.matmul(w_fast_pos, o[k])
+        i_slow_inh = np.matmul(w_slow_neg, r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
+        i_slow_exc = np.matmul(w_slow_pos, r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
+        i_in_inh = np.matmul(w_in_neg, np.where(c[k]>=0, c[k], 0))  # c can be negative, so we need to use np.where for it to make sure we only use negative weights
+        i_in_inh += np.matmul(w_in_pos, np.where(c[k]<0, c[k], 0))
+        i_in_exc = np.matmul(w_in_neg, np.where(c[k]<0, c[k], 0))
+        i_in_exc += np.matmul(w_in_pos, np.where(c[k]>=0, c[k], 0))
         i_inh[k] = i_slow_inh + i_fast_inh + i_in_inh
         i_exc[k] = i_slow_exc + i_fast_exc + i_in_exc
 
