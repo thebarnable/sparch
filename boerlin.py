@@ -140,11 +140,15 @@ def main(args):
         i_inh[k] = i_slow_inh + i_fast_inh + i_in_inh
         i_exc[k] = i_slow_exc + i_fast_exc + i_in_exc
 
-      # update synaptic currents
-      if not args.auto_encoder:
-        i_slow[k] = np.matmul(w_slow, r[k])
-      i_fast[k] = -np.matmul(w_fast, o[k])
-      i_in[k]   = np.matmul(w_in, c[k])
+        i_slow[k] = i_slow_exc + i_slow_inh
+        i_fast[k] = i_fast_exc + i_fast_inh
+        i_in[k]   = i_in_exc + i_in_inh
+      else:
+        # update synaptic currents
+        if not args.auto_encoder:
+          i_slow[k] = np.matmul(w_slow, r[k])
+        i_fast[k] = -np.matmul(w_fast, o[k])
+        i_in[k]   = np.matmul(w_in, c[k])
 
       # calculate error
       e = x_snn[k] - x_euler[k] if args.alemi else np.zeros(J)
