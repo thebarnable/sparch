@@ -2,8 +2,11 @@ import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
+from tqdm import tqdm
+import os
 
 T_MIN=10000
+BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
 
 def main(args):
   ## solve linear dynamical system (LDS) ẋ = Ax + c and formally-equivalent balanced network (EBN)
@@ -79,9 +82,11 @@ def main(args):
   if args.alemi:
     w_slow = np.zeros_like(w_fast)
 
-  for epoch in range(args.epochs):
-    print("Epoch " + str(epoch))
+  print("### Balanced Spiking Neural Network ###")
+  print("# Arguments")
+  print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
 
+  for epoch in range(args.epochs):
     # solve EBN with forward euler
     x_snn = np.zeros([t, J])
     v     = np.full([t, N], v_rest)
@@ -94,8 +99,7 @@ def main(args):
 
     i_inh = np.zeros([t, N])
     i_exc = np.zeros([t, N])
-
-    for k in range(t-1):
+    for k in tqdm(range(t-1), desc="# Simulation"):
       if args.track_balance:
         i_fast_exc = -np.matmul(np.where(w_fast<0, w_fast, 0), o[k])
         i_fast_inh = -np.matmul(np.where(w_fast>=0, w_fast, 0), o[k])
@@ -202,6 +206,7 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
   scatter_yticklabels = list(range(SCATTER_MIN_EXC,SCATTER_MAX_EXC,2))+list(range(SCATTER_MIN_INH,SCATTER_MAX_INH,2))
   axs[2].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/20)], fontsize=12)
 
+  balanced_str = "unknown"
   if args.track_balance:
     b, a = butter(4, 50/(0.5*args.t), btype='low', analog=False)
     i_exc_plot = i_exc[:, args.plot_neuron]
@@ -212,11 +217,18 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
     axs[3].plot(t, -i_inh_plot, color=RED, label="-i_inh")
     axs[3].legend()
 
+    balanced = (-i_inh_plot-i_exc_plot)[1000:].mean() < BALANCE_EPS
+    balanced_str = "balanced" if balanced else "not balanced"
+    print("# Analysis")
+    print("Network is " + balanced_str)
+
   plt.xlabel('Timesteps')
   if args.plot:
     plt.show()
   if args.save != "":
-    plt.savefig(args.save, dpi=250)
+    if not os.path.exists(args.save_path):
+      os.makedirs(args.save_path)
+    plt.savefig(args.save_path + "/" + args.save + "_balancestate_" + balanced_str + ".png", dpi=250)
   plt.close()
 
 if __name__ == '__main__': 
@@ -246,6 +258,7 @@ if __name__ == '__main__':
   parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
   parser.add_argument('--plot', action='store_true', help="Visualize plot")
   parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
+  parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
   args = parser.parse_args()
 
   if args.t < T_MIN:
