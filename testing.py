@@ -9,6 +9,8 @@ import shutil
 from sparch.exp import Experiment
 from sparch.parsers.model_config import add_model_options
 from sparch.parsers.training_config import add_training_options
+from boerlin import main as boerlin_main
+from boerlin import parse_args as boerlin_args
 
 E_large=1e-3
 E_small=1e-4
@@ -132,6 +134,36 @@ class TestBEEP(unittest.TestCase):
         self.assertLess(abs(ref["test_fr"] - results["test_fr"]), E_small)
         self.assertLess(abs(ref["best_acc"] - results["best_acc"]), E_small)
         self.assertEqual(ref["best_epoch"], results["best_epoch"])
+
+class testBoerlin(unittest.TestCase):
+    # test simulation of balanced SNN in boerlin.py
+    def test_boerlin(self):
+        args=boerlin_args()
+        args.track_balance=True
+        args.save_path=".test"
+        args.save="unittest"
+        args.plot=False
+        c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc = boerlin_main(args)
+
+        # np.save("refs/boerlin.npy",
+        #         {"x_snn": x_snn,
+        #         "o": o,
+        #         "i_slow": i_slow,
+        #         "i_fast": i_fast,
+        #         "i_in": i_in,
+        #         "v": v,
+        #         "i_inh": i_inh,
+        #         "i_exc": i_exc})
+
+        ref = np.load("refs/boerlin.npy", allow_pickle=True)
+        self.assertLess(np.abs(ref.item().get("x_snn") - x_snn).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("o") - o).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("i_slow") - i_slow).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("i_fast") - i_fast).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("i_in") - i_in).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("v") - v).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("i_inh") - i_inh).max(), E_small)
+        self.assertLess(np.abs(ref.item().get("i_exc") - i_exc).max(), E_small)
 
 if __name__ == '__main__':
     unittest.main()
