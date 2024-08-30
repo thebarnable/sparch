@@ -97,10 +97,10 @@ def main(args):
 
     for k in range(t-1):
       if args.track_balance:
-        i_slow_exc = np.matmul(np.where(w_slow<0, w_slow, 0), r[k])
-        i_slow_inh = np.matmul(np.where(w_slow>=0, w_slow, 0), r[k])
         i_fast_exc = -np.matmul(np.where(w_fast<0, w_fast, 0), o[k])
         i_fast_inh = -np.matmul(np.where(w_fast>=0, w_fast, 0), o[k])
+        i_slow_exc = np.matmul(np.where(w_slow<0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
+        i_slow_inh = np.matmul(np.where(w_slow>=0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
         i_in_exc = np.matmul(np.where(w_in<0, w_in, 0), c[k])
         i_in_inh = np.matmul(np.where(w_in>=0, w_in, 0), c[k])
         i_inh[k] = i_slow_inh + i_fast_inh + i_in_inh
