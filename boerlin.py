@@ -204,15 +204,19 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
 
   if args.track_balance:
     b, a = butter(4, 50/(0.5*args.t), btype='low', analog=False)
-    i_exc_lp = np.array(filtfilt(b, a, i_exc[:, args.plot_neuron]))
-    i_inh_lp = np.array(filtfilt(b, a, i_inh[:, args.plot_neuron]))
-    axs[3].plot(t, i_exc_lp, color=BLUE, label="i_exc")
-    axs[3].plot(t, -i_inh_lp, color=RED, label="-i_inh")
+    i_exc_plot = i_exc[:, args.plot_neuron]
+    i_inh_plot = i_inh[:, args.plot_neuron]
+    i_exc_plot = np.array(filtfilt(b, a, i_exc_plot))
+    i_inh_plot = np.array(filtfilt(b, a, i_inh_plot))
+    axs[3].plot(t, i_exc_plot, color=BLUE, label="i_exc")
+    axs[3].plot(t, -i_inh_plot, color=RED, label="-i_inh")
     axs[3].legend()
 
   plt.xlabel('Timesteps')
-  plt.show()
-  #plt.savefig("plots/alemi_k"+str(args.k)+"_eta"+str(args.eta)+"_epoch"+str(epoch)+".png")
+  if args.plot:
+    plt.show()
+  if args.save != "":
+    plt.savefig(args.save, dpi=250)
   plt.close()
 
 if __name__ == '__main__': 
@@ -240,6 +244,8 @@ if __name__ == '__main__':
   parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
   parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
   parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
+  parser.add_argument('--plot', action='store_true', help="Visualize plot")
+  parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
   args = parser.parse_args()
 
   if args.t < T_MIN:
