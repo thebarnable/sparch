@@ -109,6 +109,7 @@ def main(args):
   else:
     v_thresh = T
 
+  w_fast = -w_fast
   if args.alemi:
     w_slow = np.zeros_like(w_fast)
 
@@ -131,12 +132,14 @@ def main(args):
     i_exc = np.zeros([t, N])
     for k in tqdm(range(t-1), desc="# Simulation"):
       if args.track_balance:
-        i_fast_exc = -np.matmul(np.where(w_fast<0, w_fast, 0), o[k])
-        i_fast_inh = -np.matmul(np.where(w_fast>=0, w_fast, 0), o[k])
-        i_slow_exc = np.matmul(np.where(w_slow<0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
-        i_slow_inh = np.matmul(np.where(w_slow>=0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
-        i_in_exc = np.matmul(np.where(w_in<0, w_in, 0), c[k])
-        i_in_inh = np.matmul(np.where(w_in>=0, w_in, 0), c[k])
+        i_fast_inh = np.matmul(np.where(w_fast<0, w_fast, 0), o[k])
+        i_fast_exc = np.matmul(np.where(w_fast>=0, w_fast, 0), o[k])
+        i_slow_inh = np.matmul(np.where(w_slow<0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
+        i_slow_exc = np.matmul(np.where(w_slow>=0, w_slow, 0), r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
+        i_in_inh = np.matmul(np.where(w_in<0, w_in, 0), np.where(c[k]>=0, c[k], 0))  # c can be negative, so we need to use np.where for it to make sure we only use negative weights
+        i_in_inh += np.matmul(np.where(w_in>=0, w_in, 0), np.where(c[k]<0, c[k], 0))
+        i_in_exc = np.matmul(np.where(w_in<0, w_in, 0), np.where(c[k]<0, c[k], 0))
+        i_in_exc += np.matmul(np.where(w_in>=0, w_in, 0), np.where(c[k]>=0, c[k], 0))
         i_inh[k] = i_slow_inh + i_fast_inh + i_in_inh
         i_exc[k] = i_slow_exc + i_fast_exc + i_in_exc
 
@@ -147,7 +150,7 @@ def main(args):
         # update synaptic currents
         if not args.auto_encoder:
           i_slow[k] = np.matmul(w_slow, r[k])
-        i_fast[k] = -np.matmul(w_fast, o[k])
+        i_fast[k] = np.matmul(w_fast, o[k])
         i_in[k]   = np.matmul(w_in, c[k])
 
       # calculate error
