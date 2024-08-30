@@ -8,6 +8,36 @@ import os
 T_MIN=10000
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
 
+def parse_args():
+  parser = argparse.ArgumentParser(description='Simulate spiking integrator')
+  parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
+  parser.add_argument('--t', type=int, default=20000, help='Number of time steps')
+  parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
+  parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand'], help='Choice of the w-out initialization')
+  parser.add_argument('--lds', type=str, default='1d', choices = ['1d', '2d'], help='Choice of the dynamical system to mimic/train on')
+  parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
+  parser.add_argument('--lambda-v', type=float, default=20, help='Leak term of membrane voltage (Hz)')
+  parser.add_argument('--sigma-v', type=float, default=0.001, help='Standard deviaton of noise injected each time step into membrane voltage v')
+  parser.add_argument('--lambda-s', type=float, default=0, help='Leak term of sensory integrator (Hz)')
+  parser.add_argument('--sigma-s', type=float, default=0.01, help='Standard deviaton of noise injected each time step into sensory input c')
+  parser.add_argument('--rescale', action='store_true', help='Deactivate rescaling of weights')
+  parser.add_argument('--mu', type=float, default=0, help='Linear cost term (penalize high number of spikes)')
+  parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes)')
+  parser.add_argument('--v-rest', type=float, default=0, help='Resting voltage')
+  parser.add_argument('--v-thresh', type=float, default=0.5, help='Threshold voltage')
+  parser.add_argument('--seed', type=int, default=0, help='Random seed (if -1: use default seed (system time I think?))')
+  parser.add_argument('--alemi', action='store_true', help='Train w_slow using Alemi-rule instead of fixed init + use error feedback')
+  parser.add_argument('--k', type=float, default=0.5, help='feedback scale')
+  parser.add_argument('--eta', type=float, default=0.01, help='learn rate')
+  parser.add_argument('--epochs', type=int, default=1, help='Number of epochs')
+  parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
+  parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
+  parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
+  parser.add_argument('--plot', action='store_true', help="Visualize plot")
+  parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
+  parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
+  return parser.parse_args()
+
 def main(args):
   ## solve linear dynamical system (LDS) ẋ = Ax + c and formally-equivalent balanced network (EBN)
 
@@ -142,7 +172,7 @@ def main(args):
         o[k+1][spike_id] = 1/h
 
     plot(args, epoch, c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
-
+  return c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc
 
 def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc):
   # define colors
@@ -232,34 +262,7 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
   plt.close()
 
 if __name__ == '__main__': 
-  parser = argparse.ArgumentParser(description='Simulate spiking integrator')
-  parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
-  parser.add_argument('--t', type=int, default=20000, help='Number of time steps')
-  parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
-  parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand'], help='Choice of the w-out initialization')
-  parser.add_argument('--lds', type=str, default='1d', choices = ['1d', '2d'], help='Choice of the dynamical system to mimic/train on')
-  parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
-  parser.add_argument('--lambda-v', type=float, default=20, help='Leak term of membrane voltage (Hz)')
-  parser.add_argument('--sigma-v', type=float, default=0.001, help='Standard deviaton of noise injected each time step into membrane voltage v')
-  parser.add_argument('--lambda-s', type=float, default=0, help='Leak term of sensory integrator (Hz)')
-  parser.add_argument('--sigma-s', type=float, default=0.01, help='Standard deviaton of noise injected each time step into sensory input c')
-  parser.add_argument('--rescale', action='store_true', help='Deactivate rescaling of weights')
-  parser.add_argument('--mu', type=float, default=0, help='Linear cost term (penalize high number of spikes)')
-  parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes)')
-  parser.add_argument('--v-rest', type=float, default=0, help='Resting voltage')
-  parser.add_argument('--v-thresh', type=float, default=0.5, help='Threshold voltage')
-  parser.add_argument('--seed', type=int, default=0, help='Random seed (if -1: use default seed (system time I think?))')
-  parser.add_argument('--alemi', action='store_true', help='Train w_slow using Alemi-rule instead of fixed init + use error feedback')
-  parser.add_argument('--k', type=float, default=0.5, help='feedback scale')
-  parser.add_argument('--eta', type=float, default=0.01, help='learn rate')
-  parser.add_argument('--epochs', type=int, default=1, help='Number of epochs')
-  parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
-  parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
-  parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
-  parser.add_argument('--plot', action='store_true', help="Visualize plot")
-  parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
-  parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
-  args = parser.parse_args()
+  args = parse_args()
 
   if args.t < T_MIN:
       print("ERROR: t must be larger than ", str(T_MIN))
