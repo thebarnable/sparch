@@ -226,35 +226,35 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
   VIOLET = "#886A9B"
   GREY = "#636363"
 
-  # setup spike raster plot
-  t = list(range(0,seq_len))
-  SCATTER_MIN_EXC=0
-  SCATTER_MAX_EXC=100
-  SCATTER_MIN_INH=200
-  SCATTER_MAX_INH=300
-  SCATTER_N_NEURONS_EXC=SCATTER_MAX_EXC-SCATTER_MIN_EXC
-  SCATTER_N_NEURONS_INH=SCATTER_MAX_INH-SCATTER_MIN_INH
-  SCATTER_N_NEURONS=SCATTER_N_NEURONS_EXC+SCATTER_N_NEURONS_INH
-  spikes_exc = np.argwhere(o[:,SCATTER_MIN_EXC:SCATTER_MAX_EXC]>0)
-  spikes_inh = np.argwhere(o[:,SCATTER_MIN_INH:SCATTER_MAX_INH]>0)
-  x_axis = np.append(spikes_exc[:,0], spikes_inh[:,0]) # x-axis: spike times of inh and exc populations
-  y_axis = np.append(spikes_exc[:,1], spikes_inh[:,1]+SCATTER_N_NEURONS_EXC) # y-axis: spiking neuron ids (for second population: add offset to identify them)
-  colors = len(spikes_exc[:,0])*[BLUE] + len(spikes_inh[:,0])*[RED]
 
   # create plots
+  t = list(range(0,seq_len))
   if args.track_balance:
     fig, axs = plt.subplots(4, 1, sharex=True, gridspec_kw={'height_ratios': [1, 2, 3, 2]})
   else:
     fig, axs = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [1, 2, 3]})
   fig.subplots_adjust(hspace=0)
 
-  # plot
+  # plot inputs 
   data_dim = min(c.shape[1], args.plot_dim) 
   ls = ['solid', 'dashed', 'dotted', 'dashdot']
-  for dim in range(data_dim):
-    axs[0].plot(t, c[:, dim], color=GREY, label=f"c_{dim}", linestyle=ls[dim%len(ls)])
-  axs[0].legend()
+  if args.data == "shd":
+    INPUTS_MIN = 0
+    INPUTS_MAX = 700
+    spikes = np.argwhere(c[:,INPUTS_MIN:INPUTS_MAX]>0)
+    x_axis = spikes[:,0] # x-axis: spike times
+    y_axis = spikes[:,1] # y-axis: spiking neuron ids
+    colors = len(x_axis)*[BLUE]
+    axs[0].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
+    axs[0].set_yticks(list(range(0,INPUTS_MAX,int(INPUTS_MAX/100)))[::int(0.5*INPUTS_MAX/20)])
+    scatter_yticklabels = list(range(INPUTS_MIN,INPUTS_MAX,int(INPUTS_MAX/100)))
+    axs[0].set_yticklabels(scatter_yticklabels[::int(0.5*INPUTS_MAX/20)], fontsize=12)
+  else:
+    for dim in range(data_dim):
+      axs[0].plot(t, c[:, dim], color=GREY, label=f"c_{dim}", linestyle=ls[dim%len(ls)])
+    axs[0].legend()
 
+  # plot outputs
   for dim in range(data_dim):
     axs[1].plot(t, x_euler[:, dim], color=GREY, label=f"x_euler_{dim}", linestyle=ls[dim%len(ls)])
     axs[1].plot(t, x_snn[:, dim], color=YELLOW, label=f"x_snn_{dim}", linestyle=ls[dim%len(ls)])
@@ -274,6 +274,19 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
   # axs[3].plot(t, v[:, int(args.n/2)], color=RED, label="V")
   # axs[3].legend()
 
+  # plot spike raster
+  SCATTER_MIN_EXC=0
+  SCATTER_MAX_EXC=100
+  SCATTER_MIN_INH=200
+  SCATTER_MAX_INH=300
+  SCATTER_N_NEURONS_EXC=SCATTER_MAX_EXC-SCATTER_MIN_EXC
+  SCATTER_N_NEURONS_INH=SCATTER_MAX_INH-SCATTER_MIN_INH
+  SCATTER_N_NEURONS=SCATTER_N_NEURONS_EXC+SCATTER_N_NEURONS_INH
+  spikes_exc = np.argwhere(o[:,SCATTER_MIN_EXC:SCATTER_MAX_EXC]>0)
+  spikes_inh = np.argwhere(o[:,SCATTER_MIN_INH:SCATTER_MAX_INH]>0)
+  x_axis = np.append(spikes_exc[:,0], spikes_inh[:,0]) # x-axis: spike times of inh and exc populations
+  y_axis = np.append(spikes_exc[:,1], spikes_inh[:,1]+SCATTER_N_NEURONS_EXC) # y-axis: spiking neuron ids (for second population: add offset to identify them)
+  colors = len(spikes_exc[:,0])*[BLUE] + len(spikes_inh[:,0])*[RED]
   axs[2].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
   #axs[4].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/20)])
   axs[2].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/20)])
