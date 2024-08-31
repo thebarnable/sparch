@@ -44,6 +44,7 @@ class SpikingDataset(Dataset):
         data_folder,
         split,
         nb_steps=100,
+        labeled=True
     ):
 
         # Fixed parameters
@@ -52,6 +53,7 @@ class SpikingDataset(Dataset):
         self.nb_units = 700
         self.max_time = 1.4
         self.time_bins = np.linspace(0, self.max_time, num=self.nb_steps)
+        self.labeled = labeled
 
         # Read data from h5py file
         filename = f"{data_folder}/{dataset_name}_{split}.h5"
@@ -73,9 +75,12 @@ class SpikingDataset(Dataset):
         x_size = torch.Size([self.nb_steps, self.nb_units])
 
         x = torch.sparse.FloatTensor(x_idx, x_val, x_size).to(self.device)
-        y = self.labels[index]
 
-        return x.to_dense(), y
+        if self.labeled:
+            y = self.labels[index]
+            return x.to_dense(), y
+        else:
+            return x.to_dense()
 
     def generateBatch(self, batch):
 
