@@ -5,8 +5,10 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
 from tqdm import tqdm
 import os
+from sparch.dataloaders.spiking_datasets import SpikingDataset
 
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
+
 
 def parse_args():
   parser = argparse.ArgumentParser(description='Simulate spiking integrator')
@@ -43,14 +45,6 @@ def main(args):
   ## solve linear dynamical system (LDS) ẋ = Ax + c and formally-equivalent balanced network (EBN)
 
   # define constants for leaky integrator example & unpack args for convenience
-  if args.data != "shd":
-    J = int(args.data.split("d")[0])
-    t = 20000
-    random_data = True
-  else:
-    J = 700 # ?
-    t = 100
-    random_data = False
   N = args.n
   h = args.h
   lambda_d = args.lambda_d
@@ -64,9 +58,9 @@ def main(args):
   
   ## define and solve LDS
   # define LDS of form: ẋ = Ax + c(t)
-  A = -lambda_s * np.ones(J)
-  c = np.zeros([t, J])
-  if random_data: # random data generation
+  if args.data != "shd": # random data generation
+    J = int(args.data.split("d")[0])
+    t = 20000
     for dim in range(J):
       if dim==0: # default boerlin example
         c_orig = np.zeros([t, J])
@@ -87,16 +81,25 @@ def main(args):
             start = end
         if start < t: # If there's any remaining length, fill it with the last value
             c_orig[start:, dim] = 0
-
+  else:
+    t = 100
+    dataset = SpikingDataset("shd", "SHD", "train", t, False)
+    c_orig = dataset[0].cpu().numpy()
+    J = dataset.nb_units
+ 
   # solve LDS with forward Euler and exact solution
-  x_euler   = np.zeros([t, J])
-  x_autoenc = np.zeros([t, J])
+  c       = np.zeros([t, J])
+  x_euler = np.zeros([t, J])
   #x_explicit = np.zeros([t, J])
+  if args.auto_encoder:
+    A = -lambda_d*np.ones(J)
+  else:
+    A = -lambda_s * np.ones(J)
+
   for k in range(t-1):
     c[k] = c_orig[k] + sigma_s * np.random.randn(*c_orig[k].shape) * (1/h)
 
     x_euler[k+1] = (1+h*A)*x_euler[k] + h*c[k]  # explicit euler
-    x_autoenc[k+1] = (1-h*lambda_d*np.ones(J))*x_autoenc[k] + h*c[k]  # explicit euler
     #x_explicit[k+1] = np.exp(-h*A[0][0])*x_explicit[k] + ((1-np.exp(-h*A[0][0]))/A[0][0])*c[k]  # exact
 
   ## define and solve EBN with forward Euler
@@ -209,10 +212,10 @@ def main(args):
         spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
         o[k+1][spike_id] = 1/h
 
-    plot(args, t, epoch, c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
-  return c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc
+    plot(args, t, epoch, c_orig, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
+  return c_orig, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc
 
-def plot(args, seq_len, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc):
+def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc):
   # define colors
   RED = "#D17171"
   YELLOW = "#F3A451"
@@ -253,10 +256,7 @@ def plot(args, seq_len, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, 
   axs[0].legend()
 
   for dim in range(data_dim):
-    if args.auto_encoder:
-      axs[1].plot(t, x_autoenc[:, dim], color="#000000", label=f"x_autoenc_{dim}", linestyle=ls[dim%len(ls)])
-    else:
-      axs[1].plot(t, x_euler[:, dim], color=GREY, label=f"x_euler_{dim}", linestyle=ls[dim%len(ls)])
+    axs[1].plot(t, x_euler[:, dim], color=GREY, label=f"x_euler_{dim}", linestyle=ls[dim%len(ls)])
     axs[1].plot(t, x_snn[:, dim], color=YELLOW, label=f"x_snn_{dim}", linestyle=ls[dim%len(ls)])
   axs[1].legend()
 
