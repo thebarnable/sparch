@@ -1,17 +1,16 @@
 import numpy as np
+import random
 import argparse
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
 from tqdm import tqdm
 import os
 
-T_MIN=10000
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
 
 def parse_args():
   parser = argparse.ArgumentParser(description='Simulate spiking integrator')
   parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
-  parser.add_argument('--t', type=int, default=20000, help='Number of time steps')
   parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
   parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand'], help='Choice of the w-out initialization')
   parser.add_argument('--lds', type=str, default='1d', choices = ['1d', '2d'], help='Choice of the dynamical system to mimic/train on')
@@ -31,20 +30,28 @@ def parse_args():
   parser.add_argument('--eta', type=float, default=0.01, help='learn rate')
   parser.add_argument('--epochs', type=int, default=1, help='Number of epochs')
   parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
-  parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
   parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
+  parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
   parser.add_argument('--plot', action='store_true', help="Visualize plot")
+  parser.add_argument('--plot-dim', type=int, default=4, help='Maximum dimension of the input signal to be plotted')
   parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
   parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
+  parser.add_argument('--data', type=str, default="1d", help="Dataset to use for training")
   return parser.parse_args()
 
 def main(args):
   ## solve linear dynamical system (LDS) ẋ = Ax + c and formally-equivalent balanced network (EBN)
 
   # define constants for leaky integrator example & unpack args for convenience
-  J = 1
+  if args.data != "shd":
+    J = int(args.data.split("d")[0])
+    t = 20000
+    random_data = True
+  else:
+    J = 700 # ?
+    t = 100
+    random_data = False
   N = args.n
-  t = args.t
   h = args.h
   lambda_d = args.lambda_d
   lambda_v = args.lambda_v
@@ -57,14 +64,29 @@ def main(args):
   
   ## define and solve LDS
   # define LDS of form: ẋ = Ax + c(t)
-  A = -lambda_s * np.eye(J)
+  A = -lambda_s * np.ones(J)
   c = np.zeros([t, J])
-  c_orig = np.zeros([t, J])
-  c_orig[0:2000, 0] = 0
-  c_orig[2000:5000, 0] = 50
-  c_orig[5000:7000, 0] = 0
-  c_orig[7000:9000, 0] = -100
-  c_orig[9000:-1, 0] = 0
+  if random_data: # random data generation
+    for dim in range(J):
+      if dim==0: # default boerlin example
+        c_orig = np.zeros([t, J])
+        c_orig[0:2000, 0] = 0
+        c_orig[2000:5000, 0] = 50
+        c_orig[5000:7000, 0] = 0
+        c_orig[7000:9000, 0] = -100
+        c_orig[9000:-1, 0] = 0
+      else:
+        num_slices = random.randint(3, 8)
+        slice_lengths = [random.randint(1, t) for _ in range(num_slices)]
+        slice_lengths = [int(l / sum(slice_lengths) * t) for l in slice_lengths]
+
+        start = 0
+        for length in slice_lengths:
+            end = start + length
+            c_orig[start:end, dim] = random.randint(-100, 100)
+            start = end
+        if start < t: # If there's any remaining length, fill it with the last value
+            c_orig[start:, dim] = 0
 
   # solve LDS with forward Euler and exact solution
   x_euler   = np.zeros([t, J])
@@ -74,7 +96,7 @@ def main(args):
     c[k] = c_orig[k] + sigma_s * np.random.randn(*c_orig[k].shape) * (1/h)
 
     x_euler[k+1] = (1+h*A)*x_euler[k] + h*c[k]  # explicit euler
-    x_autoenc[k+1] = (1-h*lambda_d)*x_autoenc[k] + h*c[k]  # explicit euler
+    x_autoenc[k+1] = (1-h*lambda_d*np.ones(J))*x_autoenc[k] + h*c[k]  # explicit euler
     #x_explicit[k+1] = np.exp(-h*A[0][0])*x_explicit[k] + ((1-np.exp(-h*A[0][0]))/A[0][0])*c[k]  # exact
 
   ## define and solve EBN with forward Euler
@@ -187,10 +209,10 @@ def main(args):
         spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
         o[k+1][spike_id] = 1/h
 
-    plot(args, epoch, c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
+    plot(args, t, epoch, c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
   return c_orig, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc
 
-def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc):
+def plot(args, seq_len, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc):
   # define colors
   RED = "#D17171"
   YELLOW = "#F3A451"
@@ -202,7 +224,7 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
   GREY = "#636363"
 
   # setup spike raster plot
-  t = list(range(0,args.t))
+  t = list(range(0,seq_len))
   SCATTER_MIN_EXC=0
   SCATTER_MAX_EXC=100
   SCATTER_MIN_INH=200
@@ -224,12 +246,18 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
   fig.subplots_adjust(hspace=0)
 
   # plot
-  axs[0].plot(t, c, color=GREY, label="c")
+  data_dim = min(c.shape[1], args.plot_dim) 
+  ls = ['solid', 'dashed', 'dotted', 'dashdot']
+  for dim in range(data_dim):
+    axs[0].plot(t, c[:, dim], color=GREY, label=f"c_{dim}", linestyle=ls[dim%len(ls)])
   axs[0].legend()
 
-  axs[1].plot(t, x_euler, color=GREY, label="x_euler")
-  axs[1].plot(t, x_autoenc, color=GREY, label="x_autoenc", linestyle='dotted')
-  axs[1].plot(t, x_snn, color=YELLOW, label="x_snn")
+  for dim in range(data_dim):
+    if args.auto_encoder:
+      axs[1].plot(t, x_autoenc[:, dim], color="#000000", label=f"x_autoenc_{dim}", linestyle=ls[dim%len(ls)])
+    else:
+      axs[1].plot(t, x_euler[:, dim], color=GREY, label=f"x_euler_{dim}", linestyle=ls[dim%len(ls)])
+    axs[1].plot(t, x_snn[:, dim], color=YELLOW, label=f"x_snn_{dim}", linestyle=ls[dim%len(ls)])
   axs[1].legend()
 
   # axs[2].plot(t, i_slow[:, 0], color=BLUE, label="i_slow", linestyle='dashed')
@@ -254,7 +282,7 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
 
   balanced_str = "unknown"
   if args.track_balance:
-    b, a = butter(4, 50/(0.5*args.t), btype='low', analog=False)
+    b, a = butter(4, 50/(0.5*seq_len), btype='low', analog=False)
     i_exc_plot = i_exc[:, args.plot_neuron]
     i_inh_plot = i_inh[:, args.plot_neuron]
     i_exc_plot = np.array(filtfilt(b, a, i_exc_plot))
@@ -263,7 +291,7 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
     axs[3].plot(t, -i_inh_plot, color=RED, label="-i_inh")
     axs[3].legend()
 
-    balanced = (-i_inh_plot-i_exc_plot)[1000:].mean() < BALANCE_EPS
+    balanced = (-i_inh_plot-i_exc_plot)[1500:].mean() < BALANCE_EPS
     balanced_str = "balanced" if balanced else "not balanced"
     print("# Analysis")
     print("Network is " + balanced_str)
@@ -280,12 +308,9 @@ def plot(args, epoch, c, x_euler, x_autoenc, x_snn, o, i_slow, i_fast, i_in, i_e
 if __name__ == '__main__': 
   args = parse_args()
 
-  if args.t < T_MIN:
-      print("ERROR: t must be larger than ", str(T_MIN))
-      exit(1)
-
   if args.seed != -1:
     np.random.seed(args.seed)
+    random.seed(args.seed)
   main(args)
 
   # i = 0
