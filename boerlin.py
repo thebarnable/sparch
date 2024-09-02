@@ -36,6 +36,7 @@ def parse_args():
   parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
   parser.add_argument('--plot', action='store_true', help="Visualize plot")
   parser.add_argument('--plot-dim', type=int, default=4, help='Maximum dimension of the input signal to be plotted')
+  parser.add_argument('--plot-input-raster', action='store_true', help='(only for SHD) Plot input data as raster plot')
   parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
   parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
   parser.add_argument('--data', type=str, default="1d", help="Dataset to use for training")
@@ -253,7 +254,7 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
   # plot inputs 
   data_dim = min(c.shape[1], args.plot_dim) 
   ls = ['solid', 'dashed', 'dotted', 'dashdot']
-  if args.data == "shd":
+  if args.data == "shd" and args.plot_input_raster:
     INPUTS_MIN = 0
     INPUTS_MAX = 700
     spikes = np.argwhere(c[:,INPUTS_MIN:INPUTS_MAX]>0)
