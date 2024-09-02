@@ -9,11 +9,12 @@ from sparch.dataloaders.spiking_datasets import SpikingDataset
 
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
 
-
 def parse_args():
   parser = argparse.ArgumentParser(description='Simulate spiking integrator')
   parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
+  parser.add_argument('--j', type=int, default=1, help='Input dimension (if <1 and shd, use all shd dimensions)')
   parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
+  parser.add_argument('--data', type=str, default="float", help="Dataset to use for training (float: random float inputs")
   parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand'], help='Choice of the w-out initialization')
   parser.add_argument('--lds', type=str, default='1d', choices = ['1d', '2d'], help='Choice of the dynamical system to mimic/train on')
   parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
@@ -39,7 +40,6 @@ def parse_args():
   parser.add_argument('--plot-input-raster', action='store_true', help='(only for SHD) Plot input data as raster plot')
   parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
   parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
-  parser.add_argument('--data', type=str, default="1d", help="Dataset to use for training")
   return parser.parse_args()
 
 def main(args):
@@ -50,6 +50,7 @@ def main(args):
 
   # define constants for leaky integrator example & unpack args for convenience
   N = args.n
+  J = args.j
   h = args.h
   lambda_d = args.lambda_d
   lambda_v = args.lambda_v
@@ -62,8 +63,7 @@ def main(args):
   
   ## define and solve LDS
   # define LDS of form: ẋ = Ax + c(t)
-  if args.data != "shd": # random data generation
-    J = int(args.data.split("d")[0])
+  if args.data == "float": # random data generation
     t = 20000
     for dim in range(J):
       if dim==0: # default boerlin example
@@ -86,10 +86,14 @@ def main(args):
         if start < t: # If there's any remaining length, fill it with the last value
             c_orig[start:, dim] = 0
   else:
-    t = 100
-    dataset = SpikingDataset("shd", "SHD", "train", t, False)
-    c_orig = dataset[0].cpu().numpy()
-    J = dataset.nb_units
+    t = 20000
+    dataset = SpikingDataset("shd", "SHD", "train", 100, False)
+    if J >= 1:
+      c_orig = 50*dataset[0][:,0:J].cpu().numpy()
+    else:
+      c_orig = 50*dataset[0][:,:].cpu().numpy()
+    c_orig = c_orig.repeat(200, axis=0) # repeat each of the 100 input samples 100 times
+    J = c_orig.shape[1]
  
   # solve LDS with forward Euler and exact solution
   c       = np.zeros([t, J])
