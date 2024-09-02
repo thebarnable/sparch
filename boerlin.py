@@ -43,6 +43,9 @@ def parse_args():
 
 def main(args):
   ## solve linear dynamical system (LDS) ẋ = Ax + c and formally-equivalent balanced network (EBN)
+  print("### Balanced Spiking Neural Network ###")
+  print("# Arguments")
+  print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
 
   # define constants for leaky integrator example & unpack args for convenience
   N = args.n
@@ -96,13 +99,15 @@ def main(args):
   else:
     A = -lambda_s * np.ones(J)
 
-  for k in range(t-1):
+  for k in tqdm(range(t-1), desc="# Euler Integration"):
     c[k] = c_orig[k] + sigma_s * np.random.randn(*c_orig[k].shape) * (1/h)
 
     x_euler[k+1] = (1+h*A)*x_euler[k] + h*c[k]  # explicit euler
     #x_explicit[k+1] = np.exp(-h*A[0][0])*x_explicit[k] + ((1-np.exp(-h*A[0][0]))/A[0][0])*c[k]  # exact
 
   ## define and solve EBN with forward Euler
+  print("")
+  print("# Weight initialization")
   w_out = np.zeros([J, N])  # relation to paper: output kernel Γ_i = w_out_i = w_out[:, i]
   if args.w_init == 'boerlin-fix':
     w_out[:,0:int(w_out.shape[1]/2)] = 0.1
@@ -146,10 +151,20 @@ def main(args):
     w_in_neg = np.where(w_in<0, w_in, 0)
     w_in_pos = np.where(w_in>=0, w_in, 0)
 
+  print("  Summary:")
+  print(f"    w_out {w_out.shape}: min={np.min(w_out):4f}, max={np.max(w_out):.4f}, mean={np.mean(w_out):.4f}, std={np.std(w_out):.4f}")
+  print(f"    w_in {w_in.shape}: min={np.min(w_in):.4f}, max={np.max(w_in):.4f}, mean={np.mean(w_in):.4f}, std={np.std(w_in):.4f}")
+  print(f"    w_fast {w_fast.shape}: min={np.min(w_fast):.4f}, max={np.max(w_fast):.4f}, mean={np.mean(w_fast):.4f}, std={np.std(w_fast):.4f}")
+  print(f"    w_slow {w_slow.shape}: min={np.min(w_slow):.4f}, max={np.max(w_slow):.4f}, mean={np.mean(w_slow):.4f}, std={np.std(w_slow):.4f}")
+  print(f"    v_thresh {v_thresh.shape}: min={np.min(v_thresh):.4f}, max={np.max(v_thresh):.4f}, mean={np.mean(v_thresh):.4f}, std={np.std(v_thresh):.4f}")
+  if args.data == "shd":
+    print(f"    c {c.shape}: max={np.max(c):.4f}, highest avg fr/neuron={(c.sum(axis=0)/dataset.max_time).max():.4f} (neuron={(c.sum(axis=0)/dataset.max_time).argmax()})")
+  else:
+    print(f"    c {c.shape}: min={np.min(c):.4f}, max={np.max(c):.4f}, mean={np.mean(c):.4f}, std={np.std(c):.4f}")
+  print(f"    ")
 
-  print("### Balanced Spiking Neural Network ###")
-  print("# Arguments")
-  print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
+  # c.sum()/(dataset.max_time*J) = avg firing rate dataset
+  # np.sum(np.any(c_orig > 0, axis=0)==False) = silent input neurons
 
   for epoch in range(args.epochs):
     # solve EBN with forward euler
