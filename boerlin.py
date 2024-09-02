@@ -310,7 +310,7 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
 
   balanced_str = "unknown"
   if args.track_balance:
-    b, a = butter(4, 50/(0.5*seq_len), btype='low', analog=False)
+    b, a = butter(4, 0.2, btype='low', analog=False)
     i_exc_plot = i_exc[:, args.plot_neuron]
     i_inh_plot = i_inh[:, args.plot_neuron]
     i_exc_plot = np.array(filtfilt(b, a, i_exc_plot))
