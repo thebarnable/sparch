@@ -232,6 +232,11 @@ def main(args):
         spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
         o[k+1][spike_id] = 1/h
 
+    print("# Analysis")
+    print("  Firing rates")
+    fr=o.sum(axis=0)/t
+    print(f"    Maximum = {fr.max()} Hz; Minimum = {fr.min()} Hz; Mean = {fr.mean()} Hz; Std = {fr.std()} Hz")
+
     plot(args, t, epoch, c_orig, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
   return c_orig, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc
 
@@ -320,16 +325,15 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
 
     balanced = (-i_inh_plot-i_exc_plot)[1500:].mean() < BALANCE_EPS
     balanced_str = "balanced" if balanced else "not balanced"
-    print("# Analysis")
-    print("Network is " + balanced_str)
+    print("  Network is " + balanced_str)
 
   plt.xlabel('Timesteps')
-  if args.plot:
-    plt.show()
   if args.save != "":
     if not os.path.exists(args.save_path):
       os.makedirs(args.save_path)
     plt.savefig(args.save_path + "/" + args.save + "_balancestate_" + balanced_str + ".png", dpi=250)
+  if args.plot:
+    plt.show()
   plt.close()
 
 if __name__ == '__main__': 
