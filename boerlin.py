@@ -15,7 +15,7 @@ def parse_args():
   parser.add_argument('--j', type=int, default=1, help='Input dimension (if <1 and shd, use all shd dimensions)')
   parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
   parser.add_argument('--data', type=str, default="float", help="Dataset to use for training (float: random float inputs")
-  parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand'], help='Choice of the w-out initialization')
+  parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand', 'kaiming-normal', 'kaiming-uniform', 'custom'], help='Choice of the w-out initialization')
   parser.add_argument('--lds', type=str, default='1d', choices = ['1d', '2d'], help='Choice of the dynamical system to mimic/train on')
   parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
   parser.add_argument('--lambda-v', type=float, default=20, help='Leak term of membrane voltage (Hz)')
@@ -123,6 +123,13 @@ def main(args):
     w_out[:,n:int(w_out.shape[1])] = np.random.binomial(1, 0.7, size=(J,int(w_out.shape[1])-n)) * np.random.uniform(-0.1, -0.06, size=(J,int(w_out.shape[1])-n))
   elif args.w_init == 'rand':
     w_out = np.random.binomial(1, 0.7, size=(J,N)) * np.random.uniform(-0.1, 0.1, size=(J, N))
+  elif args.w_init == 'kaiming-normal':
+    w_out = np.random.normal(0, 1, size=(J, N)) * np.sqrt(2)/np.sqrt(w_out.shape[1])
+  elif args.w_init == 'kaiming-uniform':
+    w_out = np.random.uniform(-1/np.sqrt(w_out.shape[1]), 1/np.sqrt(w_out.shape[1]), size=(J, N))
+  else:
+    w_out[0, 0:5] = 0.1
+    w_out[0, 5:10] = -0.1
 
   # set other weights
   w_in   = w_out.T                                          # NxJ
