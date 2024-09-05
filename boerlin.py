@@ -16,22 +16,16 @@ def parse_args():
   parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
   parser.add_argument('--data', type=str, default="float", help="Dataset to use for training (float: random float inputs")
   parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand', 'kaiming-normal', 'kaiming-uniform', 'custom'], help='Choice of the w-out initialization')
-  parser.add_argument('--lds', type=str, default='1d', choices = ['1d', '2d'], help='Choice of the dynamical system to mimic/train on')
   parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
   parser.add_argument('--lambda-v', type=float, default=20, help='Leak term of membrane voltage (Hz)')
   parser.add_argument('--sigma-v', type=float, default=0.001, help='Standard deviaton of noise injected each time step into membrane voltage v')
   parser.add_argument('--lambda-s', type=float, default=0, help='Leak term of sensory integrator (Hz)')
   parser.add_argument('--sigma-s', type=float, default=0.01, help='Standard deviaton of noise injected each time step into sensory input c')
-  parser.add_argument('--rescale', action='store_true', help='Deactivate rescaling of weights')
   parser.add_argument('--mu', type=float, default=0, help='Linear cost term (penalize high number of spikes)')
   parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes)')
   parser.add_argument('--v-rest', type=float, default=0, help='Resting voltage')
   parser.add_argument('--v-thresh', type=float, default=0.5, help='Threshold voltage')
   parser.add_argument('--seed', type=int, default=0, help='Random seed (if -1: use default seed (system time I think?))')
-  parser.add_argument('--alemi', action='store_true', help='Train w_slow using Alemi-rule instead of fixed init + use error feedback')
-  parser.add_argument('--k', type=float, default=0.5, help='feedback scale')
-  parser.add_argument('--eta', type=float, default=0.01, help='learn rate')
-  parser.add_argument('--epochs', type=int, default=1, help='Number of epochs')
   parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
   parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
   parser.add_argument('--plot-neuron', type=int, default=0, help='ID of neuron whose currents will be plotted')
@@ -59,7 +53,6 @@ def main(args):
   sigma_s = args.sigma_s
   mu = args.mu
   nu = args.nu
-  rescale = args.rescale
   
   ## define and solve LDS
   # define LDS of form: ẋ = Ax + c(t)
@@ -89,16 +82,15 @@ def main(args):
     t = 20000
     dataset = SpikingDataset("shd", "SHD", "train", 100, False)
     if J >= 1:
-      c_orig = 50*dataset[0][:,0:J].cpu().numpy()
+      c_orig = 50*dataset[0][:,501:501+J].cpu().numpy()
     else:
       c_orig = 50*dataset[0][:,:].cpu().numpy()
     c_orig = c_orig.repeat(200, axis=0) # repeat each of the 100 input samples 100 times
     J = c_orig.shape[1]
  
   # solve LDS with forward Euler and exact solution
-  c       = np.zeros([t, J])
-  x_euler = np.zeros([t, J])
-  #x_explicit = np.zeros([t, J])
+  c = np.zeros([t, J])
+  x = np.zeros([t, J])
   if args.auto_encoder:
     A = -lambda_d*np.ones(J)
   else:
@@ -106,9 +98,7 @@ def main(args):
 
   for k in tqdm(range(t-1), desc="# Euler Integration"):
     c[k] = c_orig[k] + sigma_s * np.random.randn(*c_orig[k].shape) * (1/h)
-
-    x_euler[k+1] = (1+h*A)*x_euler[k] + h*c[k]  # explicit euler
-    #x_explicit[k+1] = np.exp(-h*A[0][0])*x_explicit[k] + ((1-np.exp(-h*A[0][0]))/A[0][0])*c[k]  # exact
+    x[k+1] = (1+h*A)*x[k] + h*c[k]  # explicit euler
 
   ## define and solve EBN with forward Euler
   print("")
@@ -136,25 +126,10 @@ def main(args):
   w_fast = w_out.T @ w_out + mu * (lambda_d**2) * np.eye(N) # NxN
   w_slow = w_out.T @ (A + lambda_d*np.eye(J)) @ w_out       # NxN
 
-  # rescaling
-  T = 0.5*(nu * lambda_d + mu * lambda_d**2 + np.diagonal(w_fast)) # np.linalg.norm(w_out,axis=0)
+  v_thresh = 0.5*(nu * lambda_d + mu * lambda_d**2 + np.diagonal(w_fast)) # np.linalg.norm(w_out,axis=0)
   v_rest = np.full(N, args.v_rest, dtype=float)
-  if rescale:
-    v_thresh = np.full(N, args.v_thresh)
-    b = v_rest
-    a = v_thresh - b
-
-    w_in = (a*np.divide(w_in.T, T)).T
-    w_out = a*np.divide(w_out, T)
-    w_fast = a*np.divide(w_fast, T)
-    w_slow = a*np.divide(w_slow, T)
-  else:
-    v_thresh = T
 
   w_fast = -w_fast
-  if args.alemi:
-    w_slow = np.zeros_like(w_fast)
-
   if args.track_balance:
     w_fast_neg = np.where(w_fast<0, w_fast, 0)
     w_fast_pos = np.where(w_fast>=0, w_fast, 0)
@@ -178,76 +153,64 @@ def main(args):
   # c.sum()/(dataset.max_time*J) = avg firing rate dataset
   # np.sum(np.any(c_orig > 0, axis=0)==False) = silent input neurons
 
-  for epoch in range(args.epochs):
-    # solve EBN with forward euler
-    x_snn = np.zeros([t, J])
-    v     = np.full([t, N], v_rest)
-    r     = np.zeros([t, N])
-    o     = np.zeros([t, N])
-    i_slow= np.zeros([t, N])
-    i_fast= np.zeros([t, N])
-    i_in  = np.zeros([t, N])
-    i_e   = np.zeros([t, N])
+  # solve EBN with forward euler
+  x_snn = np.zeros([t, J])
+  v     = np.full([t, N], v_rest)
+  r     = np.zeros([t, N])
+  o     = np.zeros([t, N])
+  i_slow= np.zeros([t, N])
+  i_fast= np.zeros([t, N])
+  i_in  = np.zeros([t, N])
 
-    i_inh = np.zeros([t, N])
-    i_exc = np.zeros([t, N])
-    for k in tqdm(range(t-1), desc="# Simulation"):
-      if args.track_balance:
-        i_fast_inh = np.matmul(w_fast_neg, o[k])
-        i_fast_exc = np.matmul(w_fast_pos, o[k])
-        i_slow_inh = np.matmul(w_slow_neg, r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
-        i_slow_exc = np.matmul(w_slow_pos, r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
-        i_in_inh = np.matmul(w_in_neg, np.where(c[k]>=0, c[k], 0))  # c can be negative, so we need to use np.where for it to make sure we only use negative weights
-        i_in_inh += np.matmul(w_in_pos, np.where(c[k]<0, c[k], 0))
-        i_in_exc = np.matmul(w_in_neg, np.where(c[k]<0, c[k], 0))
-        i_in_exc += np.matmul(w_in_pos, np.where(c[k]>=0, c[k], 0))
-        i_inh[k] = i_slow_inh + i_fast_inh + i_in_inh
-        i_exc[k] = i_slow_exc + i_fast_exc + i_in_exc
+  i_inh = np.zeros([t, N])
+  i_exc = np.zeros([t, N])
+  for k in tqdm(range(t-1), desc="# Simulation"):
+    if args.track_balance:
+      i_fast_inh = np.matmul(w_fast_neg, o[k])
+      i_fast_exc = np.matmul(w_fast_pos, o[k])
+      i_slow_inh = np.matmul(w_slow_neg, r[k]) if not args.auto_encoder else np.zeros_like(i_fast_exc)
+      i_slow_exc = np.matmul(w_slow_pos, r[k]) if not args.auto_encoder else np.zeros_like(i_fast_inh)
+      i_in_inh = np.matmul(w_in_neg, np.where(c[k]>=0, c[k], 0))  # c can be negative, so we need to use np.where for it to make sure we only use negative weights
+      i_in_inh += np.matmul(w_in_pos, np.where(c[k]<0, c[k], 0))
+      i_in_exc = np.matmul(w_in_neg, np.where(c[k]<0, c[k], 0))
+      i_in_exc += np.matmul(w_in_pos, np.where(c[k]>=0, c[k], 0))
+      i_inh[k] = i_slow_inh + i_fast_inh + i_in_inh
+      i_exc[k] = i_slow_exc + i_fast_exc + i_in_exc
 
-        i_slow[k] = i_slow_exc + i_slow_inh
-        i_fast[k] = i_fast_exc + i_fast_inh
-        i_in[k]   = i_in_exc + i_in_inh
-      else:
-        # update synaptic currents
-        if not args.auto_encoder:
-          i_slow[k] = np.matmul(w_slow, r[k])
-        i_fast[k] = np.matmul(w_fast, o[k])
-        i_in[k]   = np.matmul(w_in, c[k])
+      i_slow[k] = i_slow_exc + i_slow_inh
+      i_fast[k] = i_fast_exc + i_fast_inh
+      i_in[k]   = i_in_exc + i_in_inh
+    else:
+      # update synaptic currents
+      if not args.auto_encoder:
+        i_slow[k] = np.matmul(w_slow, r[k])
+      i_fast[k] = np.matmul(w_fast, o[k])
+      i_in[k]   = np.matmul(w_in, c[k])
 
-      # calculate error
-      e = x_snn[k] - x_euler[k] if args.alemi else np.zeros(J)
-      i_e[k] = args.k * np.matmul(w_in, e)
+    # update membrane voltage
+    v[k+1] = (1-h*lambda_v) * v[k] + h * (lambda_v * v_rest + i_in[k] + i_slow[k] + i_fast[k]) + sigma_v * np.random.randn(*v[k].shape) * np.sqrt(h)
 
-      # update weights
-      if args.alemi:
-        dw_slow = args.eta * (np.expand_dims(r[k],1)@(np.expand_dims(w_in @ e, 1)).T)  # eta * r * (w_in*e)^T
-        #np.fill_diagonal(dw_slow, 0)
-        w_slow += dw_slow
+    # update rate
+    r[k+1] = (1-h*lambda_d) * r[k] + h*o[k]
 
-      # update membrane voltage
-      v[k+1] = (1-h*lambda_v) * v[k] + h * (lambda_v * v_rest + i_in[k] + i_e[k] + i_slow[k] + i_fast[k]) + sigma_v * np.random.randn(*v[k].shape) * np.sqrt(h)
+    # update output
+    x_snn[k+1] = np.matmul(w_out, r[k+1])
 
-      # update rate
-      r[k+1] = (1-h*lambda_d) * r[k] + h*o[k]
+    # spikes
+    spike_ids = np.asarray(np.argwhere(v[k+1] > v_thresh))
+    if len(spike_ids) > 0:
+      spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
+      o[k+1][spike_id] = 1/h
 
-      # update output
-      x_snn[k+1] = np.matmul(w_out, r[k+1])
+  print("# Analysis")
+  print("  Firing rates")
+  fr=o.sum(axis=0)/t
+  print(f"    Maximum = {fr.max()} Hz; Minimum = {fr.min()} Hz; Mean = {fr.mean()} Hz; Std = {fr.std()} Hz")
 
-      # spikes
-      spike_ids = np.asarray(np.argwhere(v[k+1] > v_thresh))
-      if len(spike_ids) > 0:
-        spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
-        o[k+1][spike_id] = 1/h
+  plot(args, t, c_orig, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc)
+  return c_orig, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc
 
-    print("# Analysis")
-    print("  Firing rates")
-    fr=o.sum(axis=0)/t
-    print(f"    Maximum = {fr.max()} Hz; Minimum = {fr.min()} Hz; Mean = {fr.mean()} Hz; Std = {fr.std()} Hz")
-
-    plot(args, t, epoch, c_orig, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc)
-  return c_orig, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc
-
-def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, v, i_inh, i_exc):
+def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
   # define colors
   RED = "#D17171"
   YELLOW = "#F3A451"
@@ -257,7 +220,6 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
   DARKRED = "#A84646"
   VIOLET = "#886A9B"
   GREY = "#636363"
-
 
   # create plots
   t = list(range(0,seq_len))
@@ -288,23 +250,9 @@ def plot(args, seq_len, epoch, c, x_euler, x_snn, o, i_slow, i_fast, i_in, i_e, 
 
   # plot outputs
   for dim in range(data_dim):
-    axs[1].plot(t, x_euler[:, dim], color=GREY, label=f"x_euler_{dim}", linestyle=ls[dim%len(ls)])
+    axs[1].plot(t, x[:, dim], color=GREY, label=f"x_{dim}", linestyle=ls[dim%len(ls)])
     axs[1].plot(t, x_snn[:, dim], color=YELLOW, label=f"x_snn_{dim}", linestyle=ls[dim%len(ls)])
   axs[1].legend()
-
-  # axs[2].plot(t, i_slow[:, 0], color=BLUE, label="i_slow", linestyle='dashed')
-  # axs[2].plot(t, i_fast[:, 0], color=BLUE, label="i_fast", linestyle='dotted')
-  #axs[2].plot(t_array, i_in_array[:, 0], color=BLUE, label="i_in")
-  #axs[2].plot(t_array, i_e_array[:, 0], color=BLUE, label="i_e", linestyle='dashdot')
-  # axs[2].plot(t, i_slow[:, int(args.n/2)], color=RED, label="i_slow", linestyle='dashed')
-  # axs[2].plot(t, i_fast[:, int(args.n/2)], color=RED, label="i_fast", linestyle='dotted')
-  #axs[2].plot(t_array, i_in_array[:, 200], color=RED, label="i_in")
-  #axs[2].plot(t_array, i_e_array[:, 200], color=RED, label="i_e", linestyle='dashdot')
-  # axs[2].legend()
-
-  # axs[3].plot(t, v[:, 0], color=BLUE, label="V")
-  # axs[3].plot(t, v[:, int(args.n/2)], color=RED, label="V")
-  # axs[3].legend()
 
   # plot spike raster
   neurons_min, neurons_max = 0, o.shape[1]
@@ -350,13 +298,3 @@ if __name__ == '__main__':
     np.random.seed(args.seed)
     random.seed(args.seed)
   main(args)
-
-  # i = 0
-  # for k in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-  #   for eta in [0.001, 0.01, 0.1]:
-  #     print("Run %d: k = %f, eta = %f" %(i, k, eta))
-  #     args.k = k
-  #     args.eta = eta
-  #     main(args)
-
-  #     i += 1
