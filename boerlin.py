@@ -25,6 +25,7 @@ def parse_args():
   parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes)')
   parser.add_argument('--v-rest', type=float, default=0, help='Resting voltage')
   parser.add_argument('--v-thresh', type=float, default=0.5, help='Threshold voltage')
+  parser.add_argument('--repeat', type=int, default=100, help='For spike-based datasets, how many times to repeat each spike')
   parser.add_argument('--seed', type=int, default=0, help='Random seed (if -1: use default seed (system time I think?))')
   parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
   parser.add_argument('--auto-encoder', action='store_true', help='Implement auto-encoder instead of function encoder (aka set W_s = 0)')
@@ -78,15 +79,16 @@ def main(args):
             start = end
         if start < t: # If there's any remaining length, fill it with the last value
             c_orig[start:, dim] = 0
-  else:
-    t = 20000
+  elif args.data == "shd":
     dataset = SpikingDataset("shd", "SHD", "train", 100, False)
     if J >= 1:
       c_orig = 50*dataset[0][:,501:501+J].cpu().numpy()
     else:
       c_orig = 50*dataset[0][:,:].cpu().numpy()
-    c_orig = c_orig.repeat(200, axis=0) # repeat each of the 100 input samples 100 times
+    c_orig = c_orig.repeat(args.repeat, axis=0) # repeat each of the 100 input samples <repeat> times
+    t = c_orig.shape[0]
     J = c_orig.shape[1]
+
  
   # solve LDS with forward Euler and exact solution
   c = np.zeros([t, J])
