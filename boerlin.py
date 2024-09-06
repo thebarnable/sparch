@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
 from tqdm import tqdm
 import os
+import sys
 from sparch.dataloaders.spiking_datasets import SpikingDataset, CueAccumulationDataset
 
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
 
-def parse_args():
+def parse_args(default=False):
   parser = argparse.ArgumentParser(description='Simulate spiking integrator')
   parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
   parser.add_argument('--j', type=int, default=1, help='Input dimension (if <1 and shd, use all shd dimensions)')
@@ -25,6 +26,9 @@ def parse_args():
   parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes)')
   parser.add_argument('--v-rest', type=float, default=0, help='Resting voltage')
   parser.add_argument('--v-thresh', type=float, default=0.5, help='Threshold voltage')
+  parser.add_argument('--input-scale', type=float, default=200, help='Scale input spikes with this factor')
+  parser.add_argument('--weight-scale', type=float, default=0.1, help='Scale weights with this factor')
+  parser.add_argument('--weight-sparsity', type=float, default=0.3, help='Sparsity of weights (0.3 means 30 percent of weights are 0)')
   parser.add_argument('--repeat', type=int, default=100, help='For spike-based datasets, how many times to repeat each spike')
   parser.add_argument('--seed', type=int, default=0, help='Random seed (if -1: use default seed (system time I think?))')
   parser.add_argument('--track-balance', action='store_true', help='trace input inh/exc currents to neurons (slows down simulation)')
@@ -35,13 +39,20 @@ def parse_args():
   parser.add_argument('--plot-input-raster', action='store_true', help='(only for SHD) Plot input data as raster plot')
   parser.add_argument('--save', type=str, default="", help='Save plot in given path as png file')
   parser.add_argument('--save-path', type=str, default="plots", help="Folder to store plots in")
-  return parser.parse_args()
+  if default:
+    return parser.parse_args([])
+  else:
+    return parser.parse_args()
 
-def main(args):
+def main(args, trial = None):
   ## solve linear dynamical system (LDS) ẋ = Ax + c and formally-equivalent balanced network (EBN)
   print("### Balanced Spiking Neural Network ###")
   print("# Arguments")
   print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
+
+  print("Command used to run this script:")
+  print(f"python {sys.argv[0]} " + " ".join(sys.argv[1:]))
+  print("")
 
   # define constants for leaky integrator example & unpack args for convenience
   N = args.n
@@ -82,15 +93,15 @@ def main(args):
   elif args.data == "shd":
     dataset = SpikingDataset("shd", "SHD", "train", 100, False)
     if J >= 1:
-      c_orig = 50*dataset[0][:,501:501+J].cpu().numpy()
+      c_orig = args.input_scale*dataset[0][:,501:501+J].cpu().numpy()
     else:
-      c_orig = 50*dataset[0][:,:].cpu().numpy()
+      c_orig = args.input_scale*dataset[0][:,:].cpu().numpy()
     c_orig = c_orig.repeat(args.repeat, axis=0) # repeat each of the 100 input samples <repeat> times
     t = c_orig.shape[0]
     J = c_orig.shape[1]
   elif args.data == "cue":
     dataset = CueAccumulationDataset(args.seed, False)
-    c_orig = 200*dataset[0].cpu().numpy()
+    c_orig = args.input_scale*dataset[0].cpu().numpy()
     c_orig = c_orig.repeat(args.repeat, axis=0)
     t = c_orig.shape[0]
     J = c_orig.shape[1]
@@ -119,7 +130,7 @@ def main(args):
     w_out[:,0:n] = np.random.binomial(1, 0.7, size=(J,n)) * np.random.uniform(0.06, 0.1, size=(J, n))
     w_out[:,n:int(w_out.shape[1])] = np.random.binomial(1, 0.7, size=(J,int(w_out.shape[1])-n)) * np.random.uniform(-0.1, -0.06, size=(J,int(w_out.shape[1])-n))
   elif args.w_init == 'rand':
-    w_out = np.random.binomial(1, 0.7, size=(J,N)) * np.random.uniform(-0.1, 0.1, size=(J, N))
+    w_out = np.random.binomial(1, 1-args.weight_sparsity, size=(J,N)) * np.random.uniform(-args.weight_scale, args.weight_scale, size=(J, N))
   elif args.w_init == 'kaiming-normal':
     w_out = np.random.normal(0, 1, size=(J, N)) * np.sqrt(2)/np.sqrt(w_out.shape[1])
   elif args.w_init == 'kaiming-uniform':
@@ -209,13 +220,19 @@ def main(args):
       spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
       o[k+1][spike_id] = 1/h
 
+    if trial is not None and k%100==0:
+      trial.report(np.mean((x-x_snn)**2), k)
+
   print("# Analysis")
   print("  Firing rates")
   fr=o.sum(axis=0)/t
   print(f"    Maximum = {fr.max()} Hz; Minimum = {fr.min()} Hz; Mean = {fr.mean()} Hz; Std = {fr.std()} Hz")
+  print("  Mean square error between x and x_snn")
+  mse=np.mean((x-x_snn)**2)
+  print(f"    MSE = {mse}")
 
   plot(args, t, c_orig, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc)
-  return c_orig, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc
+  return mse, c_orig, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc
 
 def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
   # define colors
@@ -293,7 +310,8 @@ def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
   if args.save != "":
     if not os.path.exists(args.save_path):
       os.makedirs(args.save_path)
-    plt.savefig(args.save_path + "/" + args.save + "_balancestate_" + balanced_str + ".png", dpi=250)
+    e = np.mean((x-x_snn)**2)
+    plt.savefig(args.save_path + "/" + f"{e:.6f}" + args.save + "_balancestate_" + balanced_str + ".png", dpi=250)
   if args.plot:
     plt.show()
   plt.close()
