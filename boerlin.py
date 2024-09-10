@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
 from tqdm import tqdm
 import os
-from sparch.dataloaders.spiking_datasets import SpikingDataset
+from sparch.dataloaders.spiking_datasets import SpikingDataset, CueAccumulationDataset
 
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
 
@@ -14,7 +14,7 @@ def parse_args():
   parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
   parser.add_argument('--j', type=int, default=1, help='Input dimension (if <1 and shd, use all shd dimensions)')
   parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
-  parser.add_argument('--data', type=str, default="float", help="Dataset to use for training (float: random float inputs")
+  parser.add_argument('--data', type=str, default="float", choices = ["float", "shd", "cue"], help="Dataset to use for training (float: random float inputs")
   parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand', 'kaiming-normal', 'kaiming-uniform', 'custom'], help='Choice of the w-out initialization')
   parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
   parser.add_argument('--lambda-v', type=float, default=20, help='Leak term of membrane voltage (Hz)')
@@ -88,7 +88,12 @@ def main(args):
     c_orig = c_orig.repeat(args.repeat, axis=0) # repeat each of the 100 input samples <repeat> times
     t = c_orig.shape[0]
     J = c_orig.shape[1]
-
+  elif args.data == "cue":
+    dataset = CueAccumulationDataset(args.seed, False)
+    c_orig = 200*dataset[0].cpu().numpy()
+    c_orig = c_orig.repeat(args.repeat, axis=0)
+    t = c_orig.shape[0]
+    J = c_orig.shape[1]
  
   # solve LDS with forward Euler and exact solution
   c = np.zeros([t, J])
@@ -234,7 +239,7 @@ def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
   # plot inputs 
   data_dim = min(c.shape[1], args.plot_dim) 
   ls = ['solid', 'dashed', 'dotted', 'dashdot']
-  if args.data == "shd" and args.plot_input_raster:
+  if args.data != "float" and args.plot_input_raster:
     neurons_min, neurons_max = 0, c.shape[1]
     neurons_ticks = 100 if neurons_max > 150 else 10 if neurons_max > 20 else 1
     spikes = np.argwhere(c[:,neurons_min:neurons_max]>0)
