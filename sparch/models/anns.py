@@ -26,66 +26,27 @@ class ANN(nn.Module):
 
     The function returns the outputs of the last hidden or readout layer
     with shape (batch, time, feats) or (batch, feats) respectively.
-
-    Arguments
-    ---------
-    input_shape : tuple
-        Shape of an input example.
-    layer_sizes : int list
-        List of number of neurons in all hidden layers
-    ann_type : str
-        Type of neuron model, either 'MLP', 'RNN', 'LiGRU' or 'GRU'.
-    dropout : float
-        Dropout rate (must be between 0 and 1).
-    normalization : str
-        Type of normalization (batchnorm, layernorm). Every string different
-        from batchnorm and layernorm will result in no normalization.
-    use_bias : bool
-        If True, additional trainable bias is used with feedforward weights.
-    bidirectional : bool
-        If True, a bidirectional model that scans the sequence both directions
-        is used, which doubles the size of feedforward matrices in layers l>0.
-        Must be False with MLP ann type.
-    use_readout_layer : bool
-        If True, the final layer is a linear layer that outputs a cumulative
-        sum of the sequence using a softmax function. The outputs have shape
-        (batch, labels) with no time dimension. If False, the final layer
-        is the same as the hidden layers and outputs sequences with shape
-        (batch, time, labels).
     """
 
     def __init__(
         self,
-        input_shape,
-        layer_sizes,
-        ann_type="MLP",
-        dropout=0.0,
-        normalization="batchnorm",
-        use_bias=False,
-        bidirectional=False,
-        use_readout_layer=True,
+        args
     ):
         super().__init__()
 
         # Fixed parameters
-        self.reshape = True if len(input_shape) > 3 else False
-        self.input_size = float(torch.prod(torch.tensor(input_shape[2:])))
-        self.batch_size = input_shape[0]
-        self.layer_sizes = layer_sizes
-        self.num_layers = len(layer_sizes)
-        self.num_outputs = layer_sizes[-1]
-        self.ann_type = ann_type
-        self.dropout = dropout
-        self.normalization = normalization
-        self.use_bias = use_bias
-        self.bidirectional = bidirectional
-        self.use_readout_layer = use_readout_layer
-        self.is_snn = False
+        self.reshape = True if len(args.input_shape) > 3 else False
+        self.input_size = float(torch.prod(torch.tensor(args.input_shape[2:])))
+        self.batch_size = args.input_shape[0]
+        self.layer_sizes = args.layer_sizes
+        self.n_layers = args.n_layers
+        self.model = args.model
+        self.dropout = args.dropout
+        self.normalization = args.normalization
+        self.bidirectional = args.bidirectional
+        self.use_readout_layer = args.use_readout_layer
 
-        if ann_type not in ["MLP", "RNN", "LiGRU", "GRU"]:
-            raise ValueError(f"Invalid ann type {ann_type}")
-
-        if bidirectional and ann_type == "MLP":
+        if args.bidirectional and args.model == "MLP":
             raise ValueError("MLP cannot be bidirectional.")
 
         # Init trainable parameters
@@ -97,13 +58,8 @@ class ANN(nn.Module):
         input_size = self.input_size
         ann_class = self.ann_type + "Layer"
 
-        if self.use_readout_layer:
-            num_hidden_layers = self.num_layers - 1
-        else:
-            num_hidden_layers = self.num_layers
-
         # Hidden layers
-        for i in range(num_hidden_layers):
+        for i in range(self.n_layers):
             ann.append(
                 globals()[ann_class](
                     input_size=input_size,

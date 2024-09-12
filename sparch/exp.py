@@ -19,6 +19,7 @@ import datetime
 from datetime import timedelta
 import random
 import gc
+import inspect
 
 import numpy as np
 import torch
@@ -26,12 +27,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from sparch.dataloaders.nonspiking_datasets import load_hd_or_sc
-from sparch.dataloaders.spiking_datasets import load_shd_or_ssc
+from sparch.dataloaders.nonspiking_datasets import *
+from sparch.dataloaders.spiking_datasets import * 
+from sparch.models import anns
+from sparch.models import snns
 from sparch.models.anns import ANN
 from sparch.models.snns import SNN
-from sparch.parsers.model_config import print_model_options
-from sparch.parsers.training_config import print_training_options
 
 logger = logging.getLogger(__name__)
 
@@ -44,67 +45,45 @@ class Experiment:
 
     def __init__(self, args):
 
-        # New model config
-        self.model_type = args.model_type
-        self.nb_layers = args.nb_layers
-        self.nb_hiddens = args.nb_hiddens
-        self.pdrop = args.pdrop
-        self.normalization = args.normalization
-        self.bidirectional = args.bidirectional
-        self.balance = args.balance
-
-        # Training config
-        self.use_pretrained_model = args.use_pretrained_model
-        self.only_do_testing = args.only_do_testing
-        self.load_exp_folder = args.load_exp_folder
-        self.new_exp_folder = args.new_exp_folder
-        self.dataset_name = args.dataset_name
-        self.data_folder = args.data_folder
-        self.log_tofile = args.log_tofile
-        self.save_best = args.save_best
-        self.batch_size = args.batch_size
-        self.nb_epochs = args.nb_epochs
-        self.start_epoch = args.start_epoch
-        self.lr = args.lr
-        self.scheduler_patience = args.scheduler_patience
-        self.scheduler_factor = args.scheduler_factor
-        self.use_regularizers = args.use_regularizers
-        self.reg_factor = args.reg_factor
-        self.reg_fmin = args.reg_fmin
-        self.reg_fmax = args.reg_fmax
-        self.use_augm = args.use_augm
-        self.substeps = args.substeps
-        self.plot = args.plot
-        self.plot_epoch_freq = args.plot_epoch_freq
+        # Unpack args into member variables
+        for key, value in vars(args).items():
+            setattr(self, key, value)
         self.plot_classes = [0, 2, 4]
         self.plot_class_cnt = {p:0 for p in self.plot_classes}
         self.plot_class_cnt_max = 5
         self.plot_batch_id = 0
 
+        self.outname = (self.dataset + "_" + self.model + "_" + \
+                    str(self.n_layers) + "lay" + str(self.neurons) + \
+                    "_drop" + str(self.dropout) + "_" + str(self.normalization) + \
+                    "_nobias" + \
+                    "_bdir" if self.bidirectional else "_udir" + \
+                    "_reg" if self.use_regularizers else "_noreg" + \
+                    "_lr" + str(self.lr) + \
+                    "_st" + str(self.substeps) + \
+                    "_singlespike" if self.single_spike else "").replace(".", "_")
+
         # Set seed
-        if args.seed == -1:
-            args.seed = int(datetime.datetime.now().timestamp())
-        torch.manual_seed(args.seed)
-        np.random.seed(args.seed)
-        random.seed(args.seed)
+        self.seed = int(datetime.datetime.now().timestamp()) if self.seed == -1 else self.seed
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
 
         # Initialize logging and output folders
         self.init_exp_folders()
         self.init_logging()
-        print_model_options(args)
-        print_training_options(args)
 
         logging.info(f"\nSaving results and trained model in {self.exp_folder}\n")
 
         # Set device
-        if args.gpu != -1:
+        if self.gpu != -1:
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % args.gpu
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"\nDevice is set to {self.device}\n")
 
         # Initialize dataloaders and model
-        self.init_dataset()
+        self.train_loader, self.valid_loader, self.test_loader, self.n_inputs, self.n_outputs = self.init_dataset()
         self.init_model(args)
 
         # Define optimizer
@@ -140,7 +119,7 @@ class Experiment:
             train_accs, train_frs, validation_accs, validation_frs = [], [], [], []
             logging.info("\n------ Begin training ------\n")
 
-            for e in range(best_epoch + 1, best_epoch + self.nb_epochs + 1):
+            for e in range(best_epoch + 1, best_epoch + self.n_epochs + 1):
                 train_acc, train_fr = self.train_one_epoch(e)
                 valid_acc, valid_fr = self.valid_one_epoch(e, self.valid_loader, test=False)
                 self.scheduler.step(valid_acc) # Update learning rate
@@ -181,7 +160,7 @@ class Experiment:
 
         # Test trained model
         logging.info("\n------ Begin Testing ------\n")
-        if self.dataset_name in ["sc", "ssc"]:
+        if self.dataset in ["sc", "ssc"]:
             test_acc, test_fr = self.valid_one_epoch(e, self.test_loader, test=True)
         else:
             logging.info("\nThis dataset uses the same split for validation and testing.\n")
@@ -212,23 +191,12 @@ class Experiment:
                 raise FileNotFoundError(
                     errno.ENOENT, os.strerror(errno.ENOENT), self.load_path
                 )
-
         # Use given path for new model folder
         elif self.new_exp_folder is not None:
             exp_folder = self.new_exp_folder
-
         # Generate a path for new model from chosen config
         else:
-            outname = self.dataset_name + "_" + self.model_type + "_"
-            outname += str(self.nb_layers) + "lay" + str(self.nb_hiddens)
-            outname += "_drop" + str(self.pdrop) + "_" + str(self.normalization)
-            outname += "_nobias"
-            outname += "_bdir" if self.bidirectional else "_udir"
-            outname += "_reg" if self.use_regularizers else "_noreg"
-            outname += "_lr" + str(self.lr)
-            outname += "_st" + str(self.substeps)
-            outname += "_balance" if self.balance else ""
-            exp_folder = "exp/" + outname.replace(".", "_") + "/run0"
+            exp_folder = "exp/" + self.outname + "/run0"
             while os.path.exists(exp_folder): # if run0 already exists, create run1 (and so on)
                 exp_folder=exp_folder[:-1] + str(int(exp_folder[-1])+1)
 
@@ -255,7 +223,7 @@ class Experiment:
         This function sets the experimental log to be written either to
         a dedicated log file, or to the terminal.
         """
-        if self.log_tofile:
+        if self.log:
             logging.FileHandler(
                 filename=self.log_dir + "exp.log",
                 mode="a",
@@ -275,105 +243,119 @@ class Experiment:
 
     def init_dataset(self):
         """
-        This function prepares dataloaders for the desired dataset.
+        This function creates a dataloaders for the given dataset.
+
+        Arguments
+        ---------
+        dataset : str
+            Name of the dataset, either shd or ssc.
+        dataset_folder : str
+            Path to folder containing the Heidelberg Digits dataset.
+        split : str
+            Split of dataset, must be either "train" or "test" for SHD.
+            For SSC, can be "train", "valid" or "test".
+        batch_size : int
+            Number of examples in a single generated batch.
+        shuffle : bool
+            Whether to shuffle examples or not.
+        workers : int
+            Number of workers.
         """
-        # For the spiking datasets
-        if self.dataset_name in ["shd", "ssc"]:
+        if self.dataset == "shd" or self.dataset == "hd":
+            logging.info(f"{self.dataset} does not have a validation split. Using test split.")
 
-            self.nb_inputs = 700
-            self.nb_outputs = 20 if self.dataset_name == "shd" else 35
+        if self.dataset == "shd" or self.dataset == "ssc":
+            if self.augment:
+                raise NotImplementedError("Data augmentation not yet implemented for spiking datasets")
 
-            self.train_loader = load_shd_or_ssc(
-                dataset_name=self.dataset_name,
-                data_folder=self.data_folder,
-                split="train",
+            trainset = SpikingDataset(self.dataset, self.dataset_folder, "train", 100)
+            train_loader = DataLoader(
+                trainset,
                 batch_size=self.batch_size,
-                nb_steps=100,
+                collate_fn=trainset.generateBatch,
                 shuffle=True,
+                num_workers=0,
+                pin_memory=True,
             )
-            self.valid_loader = load_shd_or_ssc(
-                dataset_name=self.dataset_name,
-                data_folder=self.data_folder,
-                split="valid",
+
+            valset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100)
+            val_loader = DataLoader(
+                valset,
                 batch_size=self.batch_size,
-                nb_steps=100,
+                collate_fn=valset.generateBatch,
                 shuffle=False,
+                num_workers=0,
+                pin_memory=True,
             )
-            if self.dataset_name == "ssc":
-                self.test_loader = load_shd_or_ssc(
-                    dataset_name=self.dataset_name,
-                    data_folder=self.data_folder,
-                    split="test",
-                    batch_size=self.batch_size,
-                    nb_steps=100,
-                    shuffle=False,
-                )
-            if self.use_augm:
-                logging.warning(
-                    "\nWarning: Data augmentation not implemented for SHD and SSC.\n"
-                )
 
-        # For the non-spiking datasets
-        elif self.dataset_name in ["hd", "sc"]:
-
-            self.nb_inputs = 40
-            self.nb_outputs = 20 if self.dataset_name == "hd" else 35
-
-            self.train_loader = load_hd_or_sc(
-                dataset_name=self.dataset_name,
-                data_folder=self.data_folder,
-                split="train",
+            testset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100)
+            test_loader = DataLoader(
+                testset,
                 batch_size=self.batch_size,
-                use_augm=self.use_augm,
+                collate_fn=testset.generateBatch,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=True
+            )
+
+        elif self.dataset == "hd" or self.dataset == "sc":
+            if self.dataset == "hd":
+                trainset = HeidelbergDigits(self.dataset_folder, "train", self.augment)
+                valset = HeidelbergDigits(self.dataset_folder, "test", self.augment)
+                testset = HeidelbergDigits(self.dataset_folder, "test", self.augment)
+            else:
+                trainset = SpeechCommands(self.dataset_folder, "training", self.augment)
+                valset = SpeechCommands(self.dataset_folder, "validation", self.augment)
+                testset = SpeechCommands(self.dataset_folder, "testing", self.augment)
+
+            train_loader = DataLoader(
+                trainset,
+                batch_size=self.batch_size,
+                collate_fn=trainset.generateBatch,
                 shuffle=True,
+                num_workers=0,
+                pin_memory=True,
             )
-            self.valid_loader = load_hd_or_sc(
-                dataset_name=self.dataset_name,
-                data_folder=self.data_folder,
-                split="valid",
+            val_loader = DataLoader(
+                valset,
                 batch_size=self.batch_size,
-                use_augm=self.use_augm,
+                collate_fn=valset.generateBatch,
                 shuffle=False,
+                num_workers=0,
+                pin_memory=True,
             )
-            if self.dataset_name == "sc":
-                self.test_loader = load_hd_or_sc(
-                    dataset_name=self.dataset_name,
-                    data_folder=self.data_folder,
-                    split="test",
-                    batch_size=self.batch_size,
-                    use_augm=self.use_augm,
-                    shuffle=False,
-                )
-            if self.use_augm:
-                logging.info("\nData augmentation is used\n")
+            test_loader = DataLoader(
+                testset,
+                batch_size=self.batch_size,
+                collate_fn=testset.generateBatch,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=True,
+            )
 
-        else:
-            raise ValueError(f"Invalid dataset name {self.dataset_name}")
+        logging.info(f"Sample sizes: Training set = {len(trainset)}; validation set = {len(valset)}; test set = {len(testset)}")
+        return train_loader, val_loader, test_loader, trainset.n_units, trainset.n_classes
 
     def init_model(self, args):
         """
         This function either loads pretrained model or builds a
         new model (ANN or SNN) depending on chosen config.
         """
-        args.input_shape = (self.batch_size, None, self.nb_inputs)
-        args.layer_sizes = [self.nb_hiddens] * (self.nb_layers - 1) + [self.nb_outputs]
+        args.input_shape = (self.batch_size, None, self.n_inputs)
+        args.layer_sizes = self.n_layers*[self.neurons] + [self.n_outputs]
 
         if self.use_pretrained_model:
             self.net = torch.load(self.load_path, map_location=self.device)
-            logging.info(f"\nLoaded model at: {self.load_path}\n {self.net}\n")
-        elif self.model_type in ["LIF", "adLIF", "RLIF", "RadLIF"]:
+            logging.info(f"\nLoaded model at: {self.load_path}")
+        elif self.model in [name.split('Layer')[0] for name, _ in inspect.getmembers(snns) if 'Layer' in name and 'Readout' not in name]:
             self.net = SNN(args).to(self.device)
-            logging.info(f"\nCreated new spiking model:\n {self.net}\n")
-        elif self.model_type in ["MLP", "RNN", "LiGRU", "GRU"]:
+        elif self.model in [name.split('Layer')[0] for name, _ in inspect.getmembers(anns) if 'Layer' in name and 'Readout' not in name]:
             self.net = ANN(args).to(self.device)
-            logging.info(f"\nCreated new non-spiking model:\n {self.net}\n")
-        else:
-            raise ValueError(f"Invalid model type {self.model_type}")
 
-        self.nb_params = sum(p.numel() for p in self.net.parameters() if p.requires_grad)
+        self.n_params = sum(p.numel() for p in self.net.parameters() if p.requires_grad)
         self.input_shape = args.input_shape
         self.layer_sizes = args.layer_sizes
-        logging.info(f"Total number of trainable parameters is {self.nb_params}")
+        logging.info(f"Model {self.net } has {self.n_params} trainable parameters")
 
     def train_one_epoch(self, e):
         """
@@ -401,7 +383,7 @@ class Experiment:
             losses.append(loss_val.item())
 
             # Spike activity
-            if self.net.is_snn:
+            if self.net.__class__.__name__ == "SNN":
                 epoch_spike_rate += torch.mean(firing_rates)
 
                 if self.use_regularizers:
@@ -438,7 +420,7 @@ class Experiment:
         logging.info(f"Epoch {e}: Train acc={train_acc}")
 
         # Train spike activity of whole epoch
-        if self.net.is_snn:
+        if self.net.__class__.__name__ == "SNN":
             epoch_spike_rate /= step
             logging.info(f"Epoch {e}: Train mean act rate={epoch_spike_rate}")
 
@@ -480,7 +462,7 @@ class Experiment:
                 accs.append(acc)
 
                 # Spike activity
-                if self.net.is_snn:
+                if self.net.__class__.__name__ == "SNN":
                     epoch_spike_rate += torch.mean(firing_rates)
 
             # Validation loss of whole epoch
@@ -493,7 +475,7 @@ class Experiment:
                 logging.info(f"Epoch {e}: Valid acc={mean_acc}")
 
             # Validation spike activity of whole epoch
-            if self.net.is_snn:
+            if self.net.__class__.__name__ == "SNN":
                 epoch_spike_rate /= step
                 if test:
                     logging.info(f"Test mean act rate={epoch_spike_rate}")

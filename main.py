@@ -1,16 +1,48 @@
-import unittest
 import argparse
 import torch
 import argparse
-import numpy as np
 import os
 import shutil
+import logging
 
 from sparch.exp import Experiment
-from sparch.parsers.model_config import add_model_options
-from sparch.parsers.training_config import add_training_options
+from sparch.helpers.parser import add_model_options
+from sparch.helpers.parser import add_training_options
 
 RESULTS_FOLDER="exp/tmp"
+
+logger = logging.getLogger(__name__)
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Model training on spiking speech commands datasets."
+    )
+    parser = add_model_options(parser)
+    parser = add_training_options(parser)
+    args = parser.parse_args()
+    print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
+    return args
+
+
+def exp():
+    """
+    Runs model training/testing using the configuration specified
+    by the parser arguments. Run `python main.py -h` for details.
+    """
+
+    # Get experiment configuration from parser
+    args = parse_args()
+
+    for i in range(args.trials):
+        if args.trials > 1:
+            args.seed = i
+
+        # Instantiate class for the desired experiment
+        experiment = Experiment(args)
+
+        # Run experiment
+        logging.info(f"\n-------- Trial {i+1}/{args.trials} --------\n")
+        experiment.forward()
 
 def run_sample():
     if os.path.exists(RESULTS_FOLDER) and os.path.isdir(RESULTS_FOLDER):
@@ -22,13 +54,14 @@ def run_sample():
     args = parser.parse_args()
     args.seed = 0
     args.new_exp_folder = RESULTS_FOLDER
-    args.model_type = "RLIF"
-    args.dataset_name = "shd"
-    args.data_folder = "SHD"
-    args.nb_layers = 2
-    args.pdrop = 0
+    args.model = "RLIF"
+    args.dataset = "shd"
+    args.dataset_folder = "SHD"
+    args.n_layers = 1
+    args.neurons = 128
+    args.dropout = 0
     args.normalization = "none"
-    args.balance = True
+    args.track_balance = True
     args.substeps = 20
     args.plot = True
     args.batch_size = 1
@@ -44,4 +77,4 @@ def run_sample():
     spikes = torch.stack(exp.net.spikes, dim=0)
     
 if __name__ == '__main__':
-    run_sample()
+    exp()

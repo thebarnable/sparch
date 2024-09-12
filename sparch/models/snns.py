@@ -15,53 +15,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from scipy.signal import butter, filtfilt
 import gc
 
-class SpikeFunctionBoxcar(torch.autograd.Function):
-    """
-    Compute surrogate gradient of the spike step function using
-    box-car function similar to DECOLLE, Kaiser et al. (2020).
-    """
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-
-        return x.gt(0).float()
-
-    @staticmethod
-    def backward(ctx, grad_spikes):
-        (x,) = ctx.saved_tensors
-        grad_x = grad_spikes.clone()
-        grad_x[x <= -0.5] = 0
-        grad_x[x > 0.5] = 0
-        return grad_x
-
-
-class SingleSpikeFunctionBoxcar(torch.autograd.Function):
-    """
-    Compute surrogate gradient of the spike step function using
-    box-car function similar to DECOLLE, Kaiser et al. (2020), but allowing only spike to happen in forward().
-    """
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-
-        x_copy = x.clone()
-        x[:, :] = 0
-        x[torch.arange(x.shape[0]), torch.argmax(x_copy, dim=1)] = 1
-        x[x_copy<=0] = 0
-        return x
-
-    @staticmethod
-    def backward(ctx, grad_spikes):
-        (x,) = ctx.saved_tensors
-        grad_x = grad_spikes.clone()
-        grad_x[x <= -0.5] = 0
-        grad_x[x > 0.5] = 0
-        return grad_x
-
+from sparch.helpers.plot import plot_network
+import sparch.helpers.surrogate as surrogate
 
 class SNN(nn.Module):
     """
@@ -74,29 +31,6 @@ class SNN(nn.Module):
     The function returns the outputs of the last spiking or readout layer
     with shape (batch, time, feats) or (batch, feats) respectively, as well
     as the firing rates of all hidden neurons with shape (num_layers*feats).
-
-    Arguments
-    ---------
-    input_shape : tuple
-        Shape of an input example.
-    layer_sizes : int list
-        List of number of neurons in all hidden layers
-    model_type : str
-        Type of neuron model, either 'LIF', 'adLIF', 'RLIF' or 'RadLIF'.
-    dropout : float
-        Dropout rate (must be between 0 and 1).
-    normalization : str
-        Type of normalization (batchnorm, layernorm). Every string different
-        from batchnorm and layernorm will result in no normalization.
-    bidirectional : bool
-        If True, a bidirectional model that scans the sequence both directions
-        is used, which doubles the size of feedforward matrices in layers l>0.
-    use_readout_layer : bool
-        If True, the final layer is a non-spiking, non-recurrent LIF and outputs
-        a cumulative sum of the membrane potential over time. The outputs have
-        shape (batch, labels) with no time dimension. If False, the final layer
-        is the same as the hidden layers and outputs spike trains with shape
-        (batch, time, labels).
     """
 
     def __init__(
@@ -110,12 +44,9 @@ class SNN(nn.Module):
         self.layer_sizes = args.layer_sizes
         self.bidirectional = args.bidirectional
         self.use_readout_layer = True
-        self.is_snn = True
-        self.balance = args.balance
+        self.single_spike = args.single_spike
         self.substeps = args.substeps
-
-        if args.model_type not in ["LIF", "adLIF", "RLIF", "RadLIF"]:
-            raise ValueError(f"Invalid neuron type {args.model_type}")
+        self.track_balance = args.track_balance
 
         # Init trainable parameters
         self.snn = self._init_layers(args)
@@ -126,20 +57,13 @@ class SNN(nn.Module):
         self.currents = []
 
     def _init_layers(self, args):
-
         snn = nn.ModuleList([])
         input_size = self.input_size
-        snn_class = args.model_type + "Layer"
-
-        if self.use_readout_layer:
-            num_hidden_layers = len(args.layer_sizes) - 1
-        else:
-            num_hidden_layers = len(args.layer_sizes)
 
         # Hidden layers
-        for i in range(num_hidden_layers):
+        for i in range(args.n_layers):
             snn.append(
-                globals()[snn_class](
+                globals()[args.model + "Layer"](
                     input_size=int(input_size),
                     hidden_size=int(self.layer_sizes[i]),
                     args=args
@@ -181,7 +105,7 @@ class SNN(nn.Module):
                 x = snn_lay(x)
             if not snn_lay.__class__ == ReadoutLayer:
                 self.spikes.append(x)
-                if snn_lay.balance:
+                if snn_lay.track_balance:
                     self.currents_exc.append(snn_lay.I_exc)
                     self.currents_inh.append(snn_lay.I_inh)
                     self.voltages.append(snn_lay.v)
@@ -192,77 +116,7 @@ class SNN(nn.Module):
         return x, firing_rates
     
     def plot(self, filename):
-        # define colors
-        RED = "#D17171"
-        YELLOW = "#F3A451"
-        GREEN = "#7B9965"
-        BLUE = "#5E7DAF"
-        DARKBLUE = "#3C5E8A"
-        DARKRED = "#A84646"
-        VIOLET = "#886A9B"
-        GREY = "#636363"
-
-        # constants for plotting
-        LAYER = 0
-        BATCH = 0
-        NEURON = 0
-        NEURONS_TO_PLOT=[0,1,10,121]
-        N_NEURONS_TO_PLOT=len(NEURONS_TO_PLOT)
-
-        # cast data lists to torch tensors
-        spikes = torch.stack(self.spikes)[LAYER, BATCH, :, :]      # layers x batch x time x neurons
-
-        # setup spike raster plot
-        t = list(range(0,spikes.shape[0]))
-        SCATTER_MIN=0
-        SCATTER_MAX=self.layer_sizes[LAYER]
-        SCATTER_N_NEURONS=SCATTER_MAX-SCATTER_MIN
-        spike_list = torch.argwhere(spikes[:,SCATTER_MIN:SCATTER_MAX]>0)
-        
-        ## get raster plot for all spikes
-        x_axis = spike_list[:,0].cpu().numpy()
-        y_axis = spike_list[:,1].cpu().numpy()
-        colors = len(spike_list[:,0])*[BLUE]
-
-        idx=torch.isin(spike_list[:,1], torch.tensor(NEURONS_TO_PLOT))
-        x_axis_2 = spike_list[idx][:,0].cpu().numpy()
-        y_axis_2 = spike_list[idx][:,1].cpu().numpy()
-        colors_2 = len(spike_list[idx][:,0])*[RED]
-
-        # create plots
-        plt.rc('xtick', labelsize=8) #fontsize of the x tick labels
-        plt.rc('ytick', labelsize=8) #fontsize of the y tick labels
-        fig, axs = plt.subplots(1+N_NEURONS_TO_PLOT*2, 1, sharex=True, gridspec_kw={'height_ratios': 2*N_NEURONS_TO_PLOT*[1] + [5]})
-        fig.subplots_adjust(hspace=0)
-
-        # plot
-        if self.balance:
-            for i in range(0, 2*N_NEURONS_TO_PLOT, 2):
-                neuron = NEURONS_TO_PLOT[int(i/2)]
-                currents_exc = torch.stack(self.currents_exc)[LAYER, BATCH, :, neuron].cpu()
-                currents_inh = torch.stack(self.currents_inh)[LAYER, BATCH, :, neuron].cpu()
-                v = torch.stack(self.voltages)[LAYER, BATCH, :, neuron].cpu()
-                b, a = butter(4, 100/(0.5*spikes.shape[0]), btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
-                #currents_exc = np.array(filtfilt(b, a, currents_exc))
-                #currents_inh = np.array(filtfilt(b, a, currents_inh))
-                axs[i].plot(t, currents_exc, color=BLUE, label="i_exc")
-                axs[i].plot(t, -currents_inh, color=RED, label="-i_inh")
-                axs[i+1].plot(t, v, color=GREY, label="v")
-                axs[i].set_title("neuron " + str(neuron), y=0.5)
-                if i==0:
-                    axs[i].legend()
-
-        axs[2*N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=8)
-        axs[2*N_NEURONS_TO_PLOT].scatter(x_axis_2, y_axis_2, c=colors_2, marker = "o", s=8)
-        axs[2*N_NEURONS_TO_PLOT].set_yticks(list(range(0,SCATTER_N_NEURONS,2))[::int(0.5*SCATTER_N_NEURONS/8)])
-        scatter_yticklabels = list(range(SCATTER_MIN, SCATTER_MAX,2))
-        axs[2*N_NEURONS_TO_PLOT].set_yticklabels(scatter_yticklabels[::int(0.5*SCATTER_N_NEURONS/8)], fontsize=8)
-
-        plt.xlabel('Timesteps')
-        #plt.show()
-        plt.savefig(filename, dpi=250)
-        plt.close()
-
+        plot_network(self.spikes, self.layer_sizes, self.track_balance, self.currents_exc, self.currents_inh, self.voltages, False, lowpass=False, filename=filename)
 
 class LIFLayer(nn.Module):
     """
@@ -299,7 +153,7 @@ class LIFLayer(nn.Module):
         self.batch_size = args.batch_size * (1 + args.bidirectional)
         self.bidirectional = args.bidirectional
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
-        self.spike_fct = SpikeFunctionBoxcar.apply
+        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
         self.substeps = args.substeps
         self.threshold = 1.0
 
@@ -318,7 +172,7 @@ class LIFLayer(nn.Module):
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=args.pdrop)
+        self.drop = nn.Dropout(p=args.dropout)
 
     def forward(self, x):
 
@@ -415,7 +269,7 @@ class adLIFLayer(nn.Module):
         self.beta_lim = [np.exp(-1 / 30), np.exp(-1 / 120)]
         self.a_lim = [-1.0, 1.0]
         self.b_lim = [0.0, 2.0]
-        self.spike_fct = SpikeFunctionBoxcar.apply
+        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
         self.substeps = args.substeps
         self.threshold = 1.0
 
@@ -441,7 +295,7 @@ class adLIFLayer(nn.Module):
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=args.pdrop)
+        self.drop = nn.Dropout(p=args.dropout)
 
     def forward(self, x):
 
@@ -540,9 +394,10 @@ class RLIFLayer(nn.Module):
         self.bidirectional = args.bidirectional
         self.batch_size = args.batch_size * (1 + self.bidirectional)
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
-        self.balance = args.balance
-        self.spike_fct = SpikeFunctionBoxcar.apply if args.balance is False else SingleSpikeFunctionBoxcar.apply
+        self.single_spike = args.single_spike
+        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
         self.substeps = args.substeps
+        self.track_balance = args.track_balance
         self.threshold = 1.0
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -569,7 +424,7 @@ class RLIFLayer(nn.Module):
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=args.pdrop)
+        self.drop = nn.Dropout(p=args.dropout)
 
     def forward(self, x, input_layer):
 
@@ -584,7 +439,7 @@ class RLIFLayer(nn.Module):
 
         # Feed-forward affine transformations (all steps in parallel)
         Wx = self.W(x)
-        if self.balance:
+        if self.track_balance:
             with torch.no_grad():
                 # self.W_exc = nn.Linear(self.input_size, self.hidden_size, bias=False)
                 # self.W_exc.weight.data = torch.where(self.W.weight.data>=0, self.W.weight.data, 0)
@@ -616,7 +471,7 @@ class RLIFLayer(nn.Module):
         # Apply dropout
         s = self.drop(s)
 
-        if self.balance:
+        if self.track_balance:
             self.I_exc = I_rec_exc+torch.repeat_interleave(Wx_exc.detach(), self.substeps, dim=1)
             self.I_inh = I_rec_inh+torch.repeat_interleave(Wx_inh.detach(), self.substeps, dim=1)
         gc.collect()
@@ -653,7 +508,7 @@ class RLIFLayer(nn.Module):
                 s[:, substeps*t + tt, :] = st
 
                 # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
-                if self.balance:
+                if self.track_balance:
                     I_rec_inh[:, substeps*t + tt, :], I_rec_exc[:, substeps*t + tt, :] = self._signed_matmul(st.detach(), V.detach())
                     # TODO: V x st equivalence check
 
@@ -703,7 +558,7 @@ class RadLIFLayer(nn.Module):
         self.beta_lim = [np.exp(-1 / 30), np.exp(-1 / 120)]
         self.a_lim = [-1.0, 1.0]
         self.b_lim = [0.0, 2.0]
-        self.spike_fct = SpikeFunctionBoxcar.apply
+        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
         self.threshold = 1.0
 
         # Trainable parameters
@@ -730,7 +585,7 @@ class RadLIFLayer(nn.Module):
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=args.pdrop)
+        self.drop = nn.Dropout(p=args.dropout)
 
     def forward(self, x):
 
@@ -849,7 +704,7 @@ class ReadoutLayer(nn.Module):
             self.normalize = True
 
         # Initialize dropout
-        self.drop = nn.Dropout(p=args.pdrop)
+        self.drop = nn.Dropout(p=args.dropout)
 
     def forward(self, x):
 

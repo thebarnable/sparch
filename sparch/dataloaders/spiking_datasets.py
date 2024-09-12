@@ -28,35 +28,36 @@ class SpikingDataset(Dataset):
 
     Arguments
     ---------
-    dataset_name : str
+    dataset : str
         Name of the dataset, either shd or ssc.
-    data_folder : str
+    dataset_folder : str
         Path to folder containing the dataset (h5py file).
     split : str
         Split of the SHD dataset, must be either "train" or "test".
-    nb_steps : int
+    n_steps : int
         Number of time steps for the generated spike trains.
     """
 
     def __init__(
         self,
-        dataset_name,
-        data_folder,
+        dataset,
+        dataset_folder,
         split,
-        nb_steps=100,
+        n_steps=100,
         labeled=True
     ):
 
         # Fixed parameters
         self.device = "cpu"  # to allow pin memory
-        self.nb_steps = nb_steps
-        self.nb_units = 700
+        self.n_steps = n_steps
+        self.n_units = 700
+        self.n_classes = 20 if dataset == "shd" else 35
         self.max_time = 1.4
-        self.time_bins = np.linspace(0, self.max_time, num=self.nb_steps)
+        self.time_bins = np.linspace(0, self.max_time, num=self.n_steps)
         self.labeled = labeled
 
         # Read data from h5py file
-        filename = f"{data_folder}/{dataset_name}_{split}.h5"
+        filename = f"{dataset_folder}/{dataset}_{split}.h5"
         self.h5py_file = h5py.File(filename, "r")
         self.firing_times = self.h5py_file["spikes"]["times"]
         self.units_fired = self.h5py_file["spikes"]["units"]
@@ -72,9 +73,9 @@ class SpikingDataset(Dataset):
 
         x_idx = torch.LongTensor(np.array([times, units])).to(self.device)
         x_val = torch.FloatTensor(np.ones(len(times))).to(self.device)
-        x_size = torch.Size([self.nb_steps, self.nb_units])
+        x_size = torch.Size([self.n_steps, self.n_units])
 
-        x = torch.sparse.FloatTensor(x_idx, x_val, x_size).to(self.device)
+        x = torch.sparse_coo_tensor(x_idx, x_val, x_size).to(self.device)
 
         if self.labeled:
             y = self.labels[index]
@@ -180,55 +181,3 @@ class CueAccumulationDataset(Dataset):
             return self.x[index], self.y[index]
         else:
             return self.x[index]
-
-def load_shd_or_ssc(
-    dataset_name,
-    data_folder,
-    split,
-    batch_size,
-    nb_steps=100,
-    shuffle=True,
-    workers=0,
-):
-    """
-    This function creates a dataloader for a given split of
-    the SHD or SSC datasets.
-
-    Arguments
-    ---------
-    dataset_name : str
-        Name of the dataset, either shd or ssc.
-    data_folder : str
-        Path to folder containing the Heidelberg Digits dataset.
-    split : str
-        Split of dataset, must be either "train" or "test" for SHD.
-        For SSC, can be "train", "valid" or "test".
-    batch_size : int
-        Number of examples in a single generated batch.
-    shuffle : bool
-        Whether to shuffle examples or not.
-    workers : int
-        Number of workers.
-    """
-    if dataset_name not in ["shd", "ssc"]:
-        raise ValueError(f"Invalid dataset name {dataset_name}")
-
-    if split not in ["train", "valid", "test"]:
-        raise ValueError(f"Invalid split name {split}")
-
-    if dataset_name == "shd" and split == "valid":
-        logging.info("SHD does not have a validation split. Using test split.")
-        split = "test"
-
-    dataset = SpikingDataset(dataset_name, data_folder, split, nb_steps)
-    logging.info(f"Number of examples in {split} set: {len(dataset)}")
-
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        collate_fn=dataset.generateBatch,
-        shuffle=shuffle,
-        num_workers=workers,
-        pin_memory=True,
-    )
-    return loader

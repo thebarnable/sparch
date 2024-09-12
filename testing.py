@@ -7,8 +7,8 @@ import os
 import shutil
 
 from sparch.exp import Experiment
-from sparch.parsers.model_config import add_model_options
-from sparch.parsers.training_config import add_training_options
+from sparch.helpers.parser import add_model_options
+from sparch.helpers.parser import add_training_options
 
 E_large=1e-3
 E_small=1e-4
@@ -28,13 +28,13 @@ class TestBEEP(unittest.TestCase):
         args = parser.parse_args()
         args.seed = 0
         args.new_exp_folder = FOLDER+"/test_bptt_sample"
-        args.model_type = "RLIF"
-        args.dataset_name = "shd"
-        args.data_folder = "SHD"
-        args.nb_layers = 3
-        args.pdrop = True
+        args.model = "RLIF"
+        args.dataset = "shd"
+        args.dataset_folder = "SHD"
+        args.n_layers = 2
+        args.dropout = True
         args.normalization = "batchnorm"
-        args.balance = False
+        args.track_balance = True
         args.substeps = 1
         exp = Experiment(args)
         
@@ -68,13 +68,14 @@ class TestBEEP(unittest.TestCase):
         args = parser.parse_args()
         args.seed = 0
         args.new_exp_folder = FOLDER+"/test_beep_sample"
-        args.model_type = "RLIF"
-        args.dataset_name = "shd"
-        args.data_folder = "SHD"
-        args.nb_layers = 2
-        args.pdrop = 0
+        args.model = "RLIF"
+        args.dataset = "shd"
+        args.dataset_folder = "SHD"
+        args.n_layers = 1
+        args.dropout = 0
         args.normalization = "none"
-        args.balance = True
+        args.single_spike = True
+        args.track_balance = True
         args.substeps = 1
         exp = Experiment(args)
         
@@ -109,15 +110,14 @@ class TestBEEP(unittest.TestCase):
         args = parser.parse_args()
         args.seed = 0
         args.new_exp_folder = FOLDER+"/test_bptt_epoch"
-        args.model_type = "RLIF"
-        args.dataset_name = "shd"
-        args.data_folder = "SHD"
-        args.nb_layers = 3
-        args.pdrop = 0.1
+        args.model = "RLIF"
+        args.dataset = "shd"
+        args.dataset_folder = "SHD"
+        args.n_layers = 2
+        args.dropout = 0.1
         args.normalization = "batchnorm"
-        args.balance = False
         args.substeps = 1
-        args.nb_epochs = 2
+        args.n_epochs = 2
         print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
         exp = Experiment(args)
         exp.forward()
