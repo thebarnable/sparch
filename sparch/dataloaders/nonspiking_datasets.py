@@ -35,11 +35,11 @@ class HeidelbergDigits(Dataset):
 
     Arguments
     ---------
-    data_folder : str
+    dataset_folder : str
         Path to folder containing the Heidelberg Digits dataset.
     split : str
         Split of the HD dataset, must be either "train" or "test".
-    use_augm : bool
+    augment : bool
         Whether to perform data augmentation or not.
     min_snr, max_snr : float
         Minimum and maximum amounts of noise if augmentation is used.
@@ -50,25 +50,25 @@ class HeidelbergDigits(Dataset):
 
     def __init__(
         self,
-        data_folder,
+        dataset_folder,
         split,
-        use_augm,
-        min_snr,
-        max_snr,
-        p_noise,
+        augment,
+        min_snr=0.0001,
+        max_snr=0.9,
+        p_noise=0.1,
     ):
 
         if split not in ["train", "test"]:
             raise ValueError(f"Invalid split {split}")
 
         # Get paths to all audio files
-        self.data_folder = data_folder
-        filename = self.data_folder + "/" + split + "_filenames.txt"
+        self.dataset_folder = dataset_folder
+        filename = self.dataset_folder + "/" + split + "_filenames.txt"
         with open(filename, "r") as f:
             self.file_list = f.read().splitlines()
 
         # Data augmentation
-        if use_augm and split == "train":
+        if augment and split == "train":
             transforms = [
                 RandomApply([PolarityInversion()], p=0.8),
                 RandomApply([Noise(min_snr, max_snr)], p_noise),
@@ -79,6 +79,9 @@ class HeidelbergDigits(Dataset):
         else:
             self.transf = lambda x: x.unsqueeze(dim=0)
 
+        self.n_units   = 40
+        self.n_classes = 20
+
     def __len__(self):
         return len(self.file_list)
 
@@ -86,7 +89,7 @@ class HeidelbergDigits(Dataset):
 
         # Read waveform
         filename = self.file_list[index]
-        x = self.data_folder + "/audio/" + filename
+        x = self.dataset_folder + "/audio/" + filename
         x, _ = torchaudio.load(x)
 
         # Apply augmentation
@@ -119,11 +122,11 @@ class SpeechCommands(Dataset):
 
     Arguments
     ---------
-    data_folder : str
+    dataset_folder : str
         Path to folder containing the Heidelberg Digits dataset.
     split : str
         Split of the HD dataset, must be either "train" or "test".
-    use_augm : bool
+    augment : bool
         Whether to perform data augmentation or not.
     min_snr, max_snr : float
         Minimum and maximum amounts of noise if augmentation is used.
@@ -134,9 +137,9 @@ class SpeechCommands(Dataset):
 
     def __init__(
         self,
-        data_folder,
+        dataset_folder,
         split,
-        use_augm,
+        augment,
         min_snr,
         max_snr,
         p_noise,
@@ -146,16 +149,16 @@ class SpeechCommands(Dataset):
             raise ValueError(f"Invalid split {split}")
 
         # Get paths to all audio files
-        self.data_folder = data_folder
+        self.dataset_folder = dataset_folder
         EXCEPT_FOLDER = "_background_noise_"
 
         def load_list(filename):
-            filepath = os.path.join(self.data_folder, filename)
+            filepath = os.path.join(self.dataset_folder, filename)
             with open(filepath) as f:
-                return [os.path.join(self.data_folder, i.strip()) for i in f]
+                return [os.path.join(self.dataset_folder, i.strip()) for i in f]
 
         if split == "training":
-            files = sorted(str(p) for p in Path(data_folder).glob("*/*.wav"))
+            files = sorted(str(p) for p in Path(dataset_folder).glob("*/*.wav"))
             exclude = load_list("validation_list.txt") + load_list("testing_list.txt")
             exclude = set(exclude)
             self.file_list = [
@@ -164,10 +167,10 @@ class SpeechCommands(Dataset):
         else:
             self.file_list = load_list(str(split) + "_list.txt")
 
-        self.labels = sorted(next(os.walk("./" + data_folder))[1])[1:]
+        self.labels = sorted(next(os.walk("./" + dataset_folder))[1])[1:]
 
         # Data augmentation
-        if use_augm and split == "training":
+        if augment and split == "training":
             transforms = [
                 RandomApply([PolarityInversion()], p=0.8),
                 RandomApply([Noise(min_snr, max_snr)], p_noise),
@@ -177,6 +180,9 @@ class SpeechCommands(Dataset):
             self.transf = ComposeMany(transforms, num_augmented_samples=1)
         else:
             self.transf = lambda x: x.unsqueeze(dim=0)
+
+        self.n_units   = 40
+        self.n_classes = 35
 
     def __len__(self):
         return len(self.file_list)
@@ -194,7 +200,7 @@ class SpeechCommands(Dataset):
         x = torchaudio.compliance.kaldi.fbank(x, num_mel_bins=40)
 
         # Get label
-        relpath = os.path.relpath(filename, self.data_folder)
+        relpath = os.path.relpath(filename, self.dataset_folder)
         label, _ = os.path.split(relpath)
         y = torch.tensor(self.labels.index(label))
 
@@ -208,83 +214,3 @@ class SpeechCommands(Dataset):
         ys = torch.LongTensor(ys)
 
         return xs, xlens, ys
-
-
-def load_hd_or_sc(
-    dataset_name,
-    data_folder,
-    split,
-    batch_size,
-    shuffle=True,
-    use_augm=False,
-    min_snr=0.0001,
-    max_snr=0.9,
-    p_noise=0.1,
-    workers=0,
-):
-    """
-    This function creates a dataloader for a given split of
-    the HD or SC dataset.
-
-    Arguments
-    ---------
-    dataset_name : str
-        The name of the dataset, either hd or sc.
-    data_folder : str
-        Path to folder containing the desired dataset.
-    split : str
-        Split of the desired dataset, must be either "train" or "test" for hd
-        and "training", "validation" or "testing" for sc.
-    batch_size : int
-        Number of examples in a single generated batch.
-    shuffle : bool
-        Whether to shuffle examples or not.
-    use_augm : bool
-        Whether to perform data augmentation or not.
-    min_snr, max_snr : float
-        Minimum and maximum amounts of noise if augmentation is used.
-    p_noise : float in (0, 1)
-        Probability to apply noise if augmentation is used, i.e.,
-        proportion of examples to which augmentation is applied.
-    workers : int
-        Number of workers.
-    """
-    if dataset_name not in ["hd", "sc"]:
-        raise ValueError(f"Invalid dataset name {dataset_name}")
-
-    if split not in ["train", "valid", "test"]:
-        raise ValueError(f"Invalid split name {split}")
-
-    if dataset_name == "hd":
-
-        if split in ["valid", "test"]:
-            split = "test"
-            logging.info("\nHD uses the same split for validation and testing.\n")
-
-        dataset = HeidelbergDigits(
-            data_folder, split, use_augm, min_snr, max_snr, p_noise
-        )
-
-    else:
-        if split == "train":
-            split = "training"
-        elif split == "valid":
-            split = "validation"
-        else:
-            split = "testing"
-
-        dataset = SpeechCommands(
-            data_folder, split, use_augm, min_snr, max_snr, p_noise
-        )
-
-    logging.info(f"Number of examples in {dataset_name} {split} set: {len(dataset)}")
-
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        collate_fn=dataset.generateBatch,
-        shuffle=shuffle,
-        num_workers=workers,
-        pin_memory=True,
-    )
-    return loader

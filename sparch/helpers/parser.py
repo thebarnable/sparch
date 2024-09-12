@@ -1,89 +1,129 @@
-#
-# SPDX-FileCopyrightText: Copyright © 2022 Idiap Research Institute <contact@idiap.ch>
-#
-# SPDX-FileContributor: Alexandre Bittar <abittar@idiap.ch>
-#
-# SPDX-License-Identifier: BSD-3-Clause
-#
-# This file is part of the sparch package
-#
-"""
-This is where the parser for the training configuration is defined.
-"""
-import logging
-from distutils.util import strtobool
+import inspect
+from sparch.models import snns, anns
 
-logger = logging.getLogger(__name__)
-
+def add_model_options(parser):
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=[name.split('Layer')[0] for name, _ in inspect.getmembers(snns)+inspect.getmembers(anns) if 'Layer' in name and 'Readout' not in name],
+        default="LIF",
+        help="Type of ANN or SNN model.",
+    )
+    parser.add_argument(
+        "--n-layers",
+        type=int,
+        default=3,
+        help="Number of layers (including readout layer).",
+    )
+    parser.add_argument(
+        "--neurons", "--n",
+        type=int,
+        default=128,
+        dest="neurons",
+        help="Number of neurons in all hidden layers.",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.1,
+        help="Dropout rate, must be between 0 and 1.",
+    )
+    parser.add_argument(
+        "--normalization",
+        type=str,
+        default="batchnorm",
+        help="Type of normalization, Every string different from batchnorm "
+        "and layernorm will result in no normalization.",
+    )
+    parser.add_argument(
+        "--bidirectional",
+        action='store_true',
+        default=False,
+        help="If True, a bidirectional model that scans the sequence in both "
+        "directions is used, which doubles the size of feedforward matrices. ",
+    )
+    parser.add_argument(
+        "--track-balance",
+        action='store_true',
+        default=False,
+        help="If True, input currents to individual neurons are tracked and saved - will reduce performance drastically.",
+    )
+    parser.add_argument(
+        "--single-spike",
+        action='store_true',
+        default=False,
+        help="If True, only spike per timestep is allowed, chosen randomly.",
+    )
+    return parser
 
 def add_training_options(parser):
     parser.add_argument(
-        "--use_pretrained_model",
-        type=lambda x: bool(strtobool(str(x))),
+        "--use-pretrained-model",
+        action='store_true',
         default=False,
         help="Whether to load a pretrained model or to create a new one.",
     )
     parser.add_argument(
-        "--only_do_testing",
-        type=lambda x: bool(strtobool(str(x))),
+        "--only-do-testing",
+        action='store_true',
         default=False,
         help="If True, will skip training and only perform testing of the "
         "loaded model.",
     )
     parser.add_argument(
-        "--load_exp_folder",
+        "--load-exp-folder",
         type=str,
         default=None,
         help="Path to experiment folder with a pretrained model to load. Note "
         "that the same path will be used to store the current experiment.",
     )
     parser.add_argument(
-        "--new_exp_folder",
+        "--new-exp-folder",
         type=str,
         default=None,
         help="Path to output folder to store experiment.",
     )
     parser.add_argument(
-        "--dataset_name",
+        "--dataset",
         type=str,
         choices=["shd", "ssc", "hd", "sc"],
         default="shd",
         help="Dataset name (shd, ssc, hd or sc).",
     )
     parser.add_argument(
-        "--data_folder",
+        "--dataset-folder",
         type=str,
-        default="data/shd_dataset/",
+        default="data/shd/",
         help="Path to dataset folder.",
     )
     parser.add_argument(
-        "--log_tofile",
-        type=lambda x: bool(strtobool(str(x))),
+        "--log",
+        action='store_true',
         default=False,
         help="Whether to print experiment log in an dedicated file or "
         "directly inside the terminal.",
     )
     parser.add_argument(
-        "--save_best",
-        type=lambda x: bool(strtobool(str(x))),
+        "--save-best",
+        action='store_true',
         default=True,
         help="If True, the model from the epoch with the highest validation "
         "accuracy is saved, if False, no model is saved.",
     )
     parser.add_argument(
-        "--batch_size",
+        "--batch-size",
         type=int,
         default=128,
         help="Number of input examples inside a single batch.",
     )
     parser.add_argument(
-        "--nb_epochs",
+        "--n-epochs",
         type=int,
         default=5,
         help="Number of training epochs (i.e. passes through the dataset).",
     )
     parser.add_argument(
-        "--start_epoch",
+        "--start-epoch",
         type=int,
         default=0,
         help="Epoch number to start training at. Will be 0 if no pretrained "
@@ -97,49 +137,49 @@ def add_training_options(parser):
         "is good for SHD and SC, but 0.001 seemed to work better for HD and SC.",
     )
     parser.add_argument(
-        "--scheduler_patience",
+        "--scheduler-patience",
         type=int,
         default=1,
         help="Number of epochs without progress before the learning rate "
         "gets decreased.",
     )
     parser.add_argument(
-        "--scheduler_factor",
+        "--scheduler-factor",
         type=float,
         default=0.7,
         help="Factor between 0 and 1 by which the learning rate gets "
         "decreased when the scheduler patience is reached.",
     )
     parser.add_argument(
-        "--use_regularizers",
-        type=lambda x: bool(strtobool(str(x))),
+        "--use-regularizers",
+        action='store_true',
         default=False,
         help="Whether to use regularizers in order to constrain the "
         "firing rates of spiking neurons within a given range.",
     )
     parser.add_argument(
-        "--reg_factor",
+        "--reg-factor",
         type=float,
         default=0.5,
         help="Factor that scales the loss value from the regularizers.",
     )
     parser.add_argument(
-        "--reg_fmin",
+        "--reg-fmin",
         type=float,
         default=0.01,
         help="Lowest firing frequency value of spiking neurons for which "
         "there is no regularization loss.",
     )
     parser.add_argument(
-        "--reg_fmax",
+        "--reg-fmax",
         type=float,
         default=0.5,
         help="Highest firing frequency value of spiking neurons for which "
         "there is no regularization loss.",
     )
     parser.add_argument(
-        "--use_augm",
-        type=lambda x: bool(strtobool(str(x))),
+        "--augment",
+        action='store_true',
         default=False,
         help="Whether to use data augmentation or not. Only implemented for "
         "nonspiking HD and SC datasets.",
@@ -164,12 +204,12 @@ def add_training_options(parser):
     )
     parser.add_argument(
         "--plot",
-        type=lambda x: bool(strtobool(str(x))),
+        action='store_true',
         default=False,
         help="Activate plotting of spikes etc",
     )
     parser.add_argument(
-        "--plot_epoch_freq",
+        "--plot-epoch-freq",
         type=int,
         default=2,
         help="CUDA ID of GPU to use"
@@ -181,36 +221,3 @@ def add_training_options(parser):
         help="Integration substeps (for each sample of the input, we do <substeps> integration steps over neuron states)"
     )
     return parser
-
-
-def print_training_options(args):
-    logging.info(
-        """
-        Training Config
-        ---------------
-        Use pretrained model: {use_pretrained_model}
-        Only do testing: {only_do_testing}
-        Load experiment folder: {load_exp_folder}
-        New experiment folder: {new_exp_folder}
-        Seed: {seed}
-        Dataset name: {dataset_name}
-        Data folder: {data_folder}
-        Log to file: {log_tofile}
-        Save best model: {save_best}
-        Batch size: {batch_size}
-        Number of epochs: {nb_epochs}
-        Start epoch: {start_epoch}
-        Initial learning rate: {lr}
-        Scheduler patience: {scheduler_patience}
-        Scheduler factor: {scheduler_factor}
-        Use regularizers: {use_regularizers}
-        Regularization factor: {reg_factor}
-        Regularization min firing rate: {reg_fmin}
-        Reguarization max firing rate: {reg_fmax}
-        Use data augmentation: {use_augm}
-        Integration substeps: {substeps}
-        GPU ID: {gpu}
-    """.format(
-            **vars(args)
-        )
-    )

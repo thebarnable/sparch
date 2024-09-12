@@ -44,15 +44,15 @@ Note that the training/validation/testing splits are different for the SC and SS
 
 ### Run experiments
 
-All experiments on the speech command recognition datasets can be run from the `run_exp.py` script. The experiment configuration can be specified using parser arguments. Run the command `python run_exp.py -h` to get the descriptions of all possible options. For instance, if you want to run a new SNN experiment with adLIF neurons on the SC dataset,
+All experiments on the speech command recognition datasets can be run from the `main.py` script. The experiment configuration can be specified using parser arguments. Run the command `python main.py -h` to get the descriptions of all possible options. For instance, if you want to run a new SNN experiment with adLIF neurons on the SC dataset,
 
-    python run_exp.py --model_type adLIF --dataset_name sc \
-        --data_folder <PATH-TO-DATASET-FOLDER> --new_exp_folder <OUTPUT-PATH>
+    python main.py --model adLIF --dataset sc \
+        --dataset_folder <PATH-TO-DATASET-FOLDER> --new_exp_folder <OUTPUT-PATH>
 
 You can also continue training from a checkpoint
 
-    python run_exp.py --use_pretrained_model 1 --load_exp_folder <OUTPUT-PATH> \
-        --dataset_name sc --data_folder <PATH-TO-DATASET-FOLDER> \
+    python main.py --use_pretrained_model 1 --load_exp_folder <OUTPUT-PATH> \
+        --dataset sc --dataset_folder <PATH-TO-DATASET-FOLDER> \
         --start_epoch <LAST-EPOCH-OF-PREVIOUS-TRAINING>
 
 
@@ -71,14 +71,14 @@ An SNN can then be simply implemented as a PyTorch module:
 
     # Build input
     batch_size = 4
-    nb_steps = 100
-    nb_inputs = 20
-    x = torch.Tensor(batch_size, nb_steps, nb_inputs)
+    n_steps = 100
+    n_inputs = 20
+    x = torch.Tensor(batch_size, n_steps, n_inputs)
     nn.init.uniform_(x)
 
     # Define model
     model = SNN(
-        input_shape=(batch_size, nb_steps, nb_inputs),
+        input_shape=(batch_size, n_steps, n_inputs),
         neuron_type="adLIF",
         layer_sizes=[128, 128, 10],
         normalization="batchnorm",
@@ -111,7 +111,7 @@ Standard artificial neural networks (ANNs) with non-spiking neurons are also def
 │   │   └── training_config.py
 │   └── exp.py
 |
-└── run_exp.py
+└── main.py
 ```
 
 ## Citation
