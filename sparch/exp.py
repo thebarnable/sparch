@@ -271,7 +271,7 @@ class Experiment:
             if self.augment:
                 raise NotImplementedError("Data augmentation not yet implemented for spiking datasets")
 
-            trainset = SpikingDataset(self.dataset, self.dataset_folder, "train", 100)
+            trainset = SpikingDataset(self.dataset, self.dataset_folder, "train", 100, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
             train_loader = DataLoader(
                 trainset,
                 batch_size=self.batch_size,
@@ -281,7 +281,7 @@ class Experiment:
                 pin_memory=True,
             )
 
-            valset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100)
+            valset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
             val_loader = DataLoader(
                 valset,
                 batch_size=self.batch_size,
@@ -291,7 +291,7 @@ class Experiment:
                 pin_memory=True,
             )
 
-            testset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100)
+            testset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
             test_loader = DataLoader(
                 testset,
                 batch_size=self.batch_size,
