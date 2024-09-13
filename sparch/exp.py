@@ -84,6 +84,8 @@ class Experiment:
 
         # Initialize dataloaders and model
         self.train_loader, self.valid_loader, self.test_loader, self.n_inputs, self.n_outputs = self.init_dataset()
+        if self.auto_encoder:
+            self.n_outputs = self.n_inputs
         self.init_model(args)
 
         # Define optimizer
@@ -105,6 +107,9 @@ class Experiment:
         This function performs model training with the configuration
         specified by the class initialization.
         """
+        if self.auto_encoder:
+            raise NotImplementedError("Training has not been implemented for auto-encoders. Use main.py::run_sample() instead.")
+
         e=0
         if not self.only_do_testing:
             # Initialize best accuracy
@@ -271,7 +276,7 @@ class Experiment:
             if self.augment:
                 raise NotImplementedError("Data augmentation not yet implemented for spiking datasets")
 
-            trainset = SpikingDataset(self.dataset, self.dataset_folder, "train", 100, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            trainset = SpikingDataset(self.dataset, self.dataset_folder, "train", 100, labeled=not self.auto_encoder, repeat=self.repeat, scale=self.dataset_scale)
             train_loader = DataLoader(
                 trainset,
                 batch_size=self.batch_size,
@@ -281,7 +286,7 @@ class Experiment:
                 pin_memory=True,
             )
 
-            valset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            valset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100, labeled=not self.auto_encoder, repeat=self.repeat, scale=self.dataset_scale)
             val_loader = DataLoader(
                 valset,
                 batch_size=self.batch_size,
@@ -291,7 +296,7 @@ class Experiment:
                 pin_memory=True,
             )
 
-            testset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            testset = SpikingDataset(self.dataset, self.dataset_folder, "test", 100, labeled=not self.auto_encoder, repeat=self.repeat, scale=self.dataset_scale)
             test_loader = DataLoader(
                 testset,
                 batch_size=self.batch_size,
@@ -336,7 +341,7 @@ class Experiment:
                 pin_memory=True,
             )
         elif self.dataset == "cue":
-            trainset = CueAccumulationDataset(self.seed, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            trainset = CueAccumulationDataset(self.seed, labeled=not self.auto_encoder, repeat=self.repeat, scale=self.dataset_scale)
             train_loader = DataLoader(
                 trainset,
                 batch_size=self.batch_size,
@@ -346,7 +351,7 @@ class Experiment:
                 pin_memory=True,
             )
 
-            valset = CueAccumulationDataset(self.seed, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            valset = CueAccumulationDataset(self.seed, labeled=not self.auto_encoder, repeat=self.repeat, scale=self.dataset_scale)
             val_loader = DataLoader(
                 valset,
                 batch_size=self.batch_size,
@@ -356,7 +361,7 @@ class Experiment:
                 pin_memory=True,
             )
 
-            testset = CueAccumulationDataset(self.seed, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            testset = CueAccumulationDataset(self.seed, labeled=not self.auto_encoder, repeat=self.repeat, scale=self.dataset_scale)
             test_loader = DataLoader(
                 testset,
                 batch_size=self.batch_size,

@@ -53,7 +53,7 @@ class TestBEEP(unittest.TestCase):
         #             "loss": loss,
         #             "acc": acc,
         #             "spikes": spikes}, "refs/bptt.pth")
-        ref = torch.load("refs/bptt.pth")
+        ref = torch.load("refs/bptt.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
         self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
         self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
         self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)
@@ -93,12 +93,46 @@ class TestBEEP(unittest.TestCase):
         #             "loss": loss,
         #             "acc": acc,
         #             "spikes": spikes}, "refs/beep.pth")
-        ref = torch.load("refs/beep.pth")
+        ref = torch.load("refs/beep.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
         self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
         self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
         self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)
         self.assertLess(torch.abs(ref["loss"].to(exp.device) - loss).max(), E_small)
         self.assertLess(torch.abs(ref["acc"].to(exp.device) - acc).max(), E_small)
+
+    def test_balanced_autoencoder(self):
+        parser = argparse.ArgumentParser(description="Model training on spiking speech commands datasets.")
+        parser = add_model_options(parser)
+        parser = add_training_options(parser)
+        args = parser.parse_args()
+        args.seed = 0
+        args.new_exp_folder = FOLDER+"/test_balanced_autoencoder"
+        args.model = "BalancedRLIF"
+        args.dataset = "cue"
+        args.n_layers = 1
+        args.dropout = 0
+        args.normalization = "none"
+        args.single_spike = True
+        args.track_balance = True
+        args.repeat = 20
+        args.batch_size = 1
+        args.auto_encoder = True
+        args.sigma_v = 0.0
+        exp = Experiment(args)
+        
+        data, _ = next(iter(exp.train_loader))
+        data = data.to(exp.device)
+        output, firing_rates = exp.net(data)
+
+        pred = torch.argmax(output, dim=1)
+        spikes = torch.stack(exp.net.spikes, dim=0)
+        # torch.save({"output": output,
+        #             "firing_rates": firing_rates,
+        #             "spikes": spikes}, "refs/balanced_ae.pth")
+        ref = torch.load("refs/balanced_ae.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
+        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
+        self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
+        self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)  
 
     # test 2 epochs
     def test_bptt_epoch(self):
@@ -119,8 +153,8 @@ class TestBEEP(unittest.TestCase):
         exp = Experiment(args)
         exp.forward()
         #shutil.copy(args.new_exp_folder+"/results.pth", "refs/bptt_epoch.pth")
-        ref = torch.load("refs/bptt_epoch.pth")
-        results = torch.load(args.new_exp_folder+"/results.pth")
+        ref = torch.load("refs/bptt_epoch.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
+        results = torch.load(args.new_exp_folder+"/results.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
         self.assertLess(torch.abs(torch.Tensor(ref["train_accs"]) - torch.Tensor(results["train_accs"])).max(), E_small)
         self.assertLess(torch.abs(torch.Tensor(ref["train_frs"]) - torch.Tensor(results["train_frs"])).max(), E_small)
         self.assertLess(torch.abs(torch.Tensor(ref["validation_accs"]) - torch.Tensor(results["validation_accs"])).max(), E_small)
@@ -134,9 +168,9 @@ class TestBEEP(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
     # suite = unittest.TestSuite()
+    # suite.addTest(TestBEEP('test_balanced_autoencoder'))
     # suite.addTest(TestBEEP('test_bptt_epoch'))
     # suite.addTest(TestBEEP('test_bptt_sample'))
     # suite.addTest(TestBEEP('test_beep_sample'))
-    
     # runner = unittest.TextTestRunner()
     # runner.run(suite)
