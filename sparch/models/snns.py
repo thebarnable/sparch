@@ -39,6 +39,7 @@ class SNN(nn.Module):
     ):
         super().__init__()
 
+        # Set params
         self.reshape = True if len(args.input_shape) > 3 else False
         self.input_size = float(torch.prod(torch.tensor(args.input_shape[2:])))
         self.layer_sizes = args.layer_sizes
@@ -46,6 +47,11 @@ class SNN(nn.Module):
         self.use_readout_layer = True
         self.single_spike = args.single_spike
         self.track_balance = args.track_balance
+
+        # Check params
+        if args.auto_encoder:
+            if args.n_layers != 1 or args.model != "BalancedRLIF":
+                raise ValueError("Auto-encoder requires a single BalancedRLIF layer.")
 
         # Init trainable parameters
         self.snn = self._init_layers(args)
@@ -72,11 +78,14 @@ class SNN(nn.Module):
 
         # Readout layer
         if self.use_readout_layer:
+            decoder = snn[-1].W.weight.data.detach().T if args.auto_encoder else None
             snn.append(
                 ReadoutLayer(
                     input_size=int(input_size),
                     hidden_size=int(self.layer_sizes[-1]),
-                    args=args
+                    args=args,
+                    euler=args.auto_encoder,
+                    weight_init=decoder
                 )
             )
 
@@ -114,6 +123,109 @@ class SNN(nn.Module):
     
     def plot(self, filename, show=False, lowpass=True):
         plot_network(self.inputs, self.spikes, self.layer_sizes, self.track_balance, self.currents_exc, self.currents_inh, self.voltages, show, lowpass=lowpass, filename=filename)
+
+class BalancedRLIFLayer(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        args
+    ):
+        super().__init__()
+
+        # Fixed parameters
+        self.bidirectional = args.bidirectional # unused
+        self.batch_size = args.batch_size * (1 + self.bidirectional)
+        self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
+        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
+        self.track_balance = args.track_balance
+        self.threshold = 1.0
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.repeat = args.repeat
+
+        self.lambda_v = args.lambda_v
+        self.lambda_d = args.lambda_d
+        self.sigma_v  = args.sigma_v
+        self.h        = args.h
+        self.mu       = args.mu
+        self.nu       = args.nu
+
+        # Trainable parameters
+        self.W = nn.Linear(input_size, hidden_size, bias=False)
+        self.W.weight.data = torch.bernoulli(torch.full((hidden_size, input_size), 0.7)) * torch.empty(hidden_size, input_size).uniform_(-0.1, 0.1)
+        self.V = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.V.weight.data = self.W.weight.data @ self.W.weight.data.T + self.mu * (self.lambda_d**2) * torch.eye(hidden_size)
+
+        self.v_thresh = 0.5*(self.nu * self.lambda_d + self.mu * self.lambda_d**2 + torch.diagonal(self.V.weight.data))
+
+        self.V.weight.data = -self.V.weight.data
+
+        print("  Summary:")
+        w_in = self.W.weight.data.detach().cpu().numpy()
+        w_fast = self.V.weight.data.detach().cpu().numpy()
+        v_thresh = self.v_thresh.detach().cpu().numpy()
+        print(f"    w_in {w_in.shape}: min={np.min(w_in):.4f}, max={np.max(w_in):.4f}, mean={np.mean(w_in):.4f}, std={np.std(w_in):.4f}")
+        print(f"    w_fast {w_fast.shape}: min={np.min(w_fast):.4f}, max={np.max(w_fast):.4f}, mean={np.mean(w_fast):.4f}, std={np.std(w_fast):.4f}")
+        print(f"    v_thresh {v_thresh.shape}: min={np.min(v_thresh):.4f}, max={np.max(v_thresh):.4f}, mean={np.mean(v_thresh):.4f}, std={np.std(v_thresh):.4f}")
+        print(f"    ")
+
+    def forward(self, x):
+        Wx = self.W(x)
+        if self.track_balance:
+            with torch.no_grad():
+                Wx_inh = self.h*torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t()).detach()
+                Wx_exc = self.h*torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t()).detach()
+
+        s, I_rec_inh, I_rec_exc = self._balanced_rlif_cell(Wx)
+
+        if self.track_balance:
+            self.I_exc = I_rec_exc + Wx_exc
+            self.I_inh = I_rec_inh + Wx_inh
+        gc.collect()
+        return s
+
+    def _balanced_rlif_cell(self, Wx):
+        # solve EBN with forward euler
+        ## init for calc
+        sim_time = Wx.shape[1]
+        device = Wx.device
+        v     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
+        r     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
+        o     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
+        i_fast= torch.zeros(Wx.shape[0], self.hidden_size).to(device)
+        V = self.V.weight.clone()
+        v_thresh = self.v_thresh.to(device)
+        ## init for tracking
+        self.v = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
+        s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
+        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
+        
+        for k in range(sim_time):
+            # update synaptic currents
+            if self.track_balance:
+                I_rec_inh[:, k, :], I_rec_exc[:, k, :] = self._signed_matmul(o.detach(), V.detach()) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
+            #i_fast = torch.matmul(V, o[0]) # --> TODO: fix batches. is below correct?
+            i_fast = torch.matmul(o, V.t())
+
+            # update membrane voltage
+            v = (1-self.h*self.lambda_v) * v + self.h * (Wx[:,k,:] + i_fast) + self.sigma_v * torch.randn_like(v) * np.sqrt(self.h)
+            self.v[:, k, :] = v.detach()
+
+            # update rate
+            r = (1-self.h*self.lambda_d) * r + self.h*o
+
+            # spikes
+            o = self.spike_fct(v.clone(), v_thresh)/self.h
+            s[:, k, :] = o
+
+        return s, I_rec_inh, I_rec_exc
+
+    def _signed_matmul(self, A, B):
+        # Compute C:=A x B for matrices A & B, split up into positive and negative components
+        # Returns: C_neg (AxB for negative elements of A, rest set to 0), C_pos (AxB for positive elements of A, rest set to 0)
+        return self.h * torch.mm(A, torch.where(B<0, B, 0)), self.h * torch.mm(A, torch.where(B>=0, B, 0))
+
 
 class LIFLayer(nn.Module):
     """
@@ -673,16 +785,30 @@ class ReadoutLayer(nn.Module):
         input_size,
         hidden_size,
         args,
+        euler=False,
+        weight_init=None
     ):
         super().__init__()
 
         # Fixed parameters
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
+        self.h = args.h
+        self.lambda_d = args.lambda_d
+        self.euler = euler
 
         # Trainable parameters
         self.W = nn.Linear(input_size, hidden_size, bias=False)
-        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
-        nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
+        if weight_init is not None:
+            self.W.weight.data = weight_init
+
+        if self.euler:
+            self.alpha = (1-self.h*self.lambda_d)
+            self.beta = self.h
+        else:
+            self.alpha = nn.Parameter(torch.Tensor(hidden_size))
+            nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
+
+            self.beta = 1 - self.alpha
 
         # Initialize normalization
         self.normalize = False
@@ -719,13 +845,22 @@ class ReadoutLayer(nn.Module):
         out = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
-        alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
+        if not self.euler:
+            alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
 
-        # Loop over time axis
-        for t in range(Wx.shape[1]):
+            # Loop over time axis
+            for t in range(Wx.shape[1]):
+                # Compute potential (LI)
+                ut = alpha * ut + (1-alpha) * Wx[:, t, :]
+                out = out + F.softmax(ut, dim=1)
+        else:
+            alpha = self.alpha
+            beta = self.beta
 
-            # Compute potential (LIF)
-            ut = alpha * ut + (1 - alpha) * Wx[:, t, :]
-            out = out + F.softmax(ut, dim=1)
+            # Loop over time axis
+            for t in range(Wx.shape[1]):
+                # Compute potential (LI)
+                ut = alpha * ut + beta * Wx[:, t, :]
+                out = out + F.softmax(ut, dim=1)
 
         return out

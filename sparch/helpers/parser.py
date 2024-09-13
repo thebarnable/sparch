@@ -54,6 +54,48 @@ def add_model_options(parser):
         default=False,
         help="If True, only spike per timestep is allowed, chosen randomly.",
     )
+    parser.add_argument(
+        "--auto-encoder",
+        action='store_true',
+        default=False,
+        help="If True, network will be initialized as an auto-encoder.",
+    )    
+    parser.add_argument(
+        "--lambda-v",
+        type=float,
+        default=20,
+        help="Leak term of membrane voltage (Hz)"
+    )
+    parser.add_argument(
+        "--lambda-d",
+        type=float,
+        default=10,
+        help="Leak term of read out (Hz)"
+    )
+    parser.add_argument(
+        "--sigma-v",
+        type=float,
+        default=0.001,
+        help="Standard deviaton of noise injected each time step into membrane voltage v"
+    )
+    parser.add_argument(
+        "--h",
+        type=float,
+        default=0.0001,
+        help="Simulaton time step (s)"
+    )
+    parser.add_argument(
+        "--mu",
+        type=float,
+        default=0.0,
+        help="Linear cost term (penalize high number of spikes)"
+    )
+    parser.add_argument(
+        "--nu",
+        type=float,
+        default=0.0,
+        help="Quadratic cost term (penalize non-equally distributed spikes)"
+    )
     return parser
 
 def add_training_options(parser):
