@@ -120,9 +120,9 @@ class CueAccumulationDataset(Dataset):
         self.dt = 1e-3
         self.t_interval = 150
         self.seq_len = n_cues*self.t_interval + t_wait
-        self.n_in = 40
-        self.n_out = 2    # This is a binary classification task, so using two output units with a softmax activation redundant
-        n_channel = self.n_in // n_symbols
+        self.n_units = 40
+        self.n_classes = 2    # This is a binary classification task, so using two output units with a softmax activation redundant
+        n_channel = self.n_units // n_symbols
         prob0 = f0 * self.dt
         t_silent = self.t_interval - t_cue
 
@@ -142,7 +142,7 @@ class CueAccumulationDataset(Dataset):
             cue_assignments[b, :] = np.random.choice([0, 1], n_cues, p=probs[b])
 
         # Generate input spikes
-        input_spike_prob = np.zeros((length, self.seq_len, self.n_in))
+        input_spike_prob = np.zeros((length, self.seq_len, self.n_units))
         t_silent = self.t_interval - t_cue
         for b in range(length):
             for k in range(n_cues):
@@ -181,3 +181,25 @@ class CueAccumulationDataset(Dataset):
             return self.x[index], self.y[index]
         else:
             return self.x[index]
+        
+    def generateBatch(self, batch):
+        if self.labeled:
+            xs, ys = zip(*batch)
+            xlens = torch.tensor([x.shape[0] for x in xs])
+            #ys = torch.LongTensor(ys).to(self.device)
+            if len(xs) > 1:
+                xs, ys = torch.hstack(xs), torch.hstack(ys)
+            else:
+                xs, ys = xs[0].expand(size=(1,*xs[0].shape)), ys[0].expand(size=(1,*ys[0].shape))
+
+            return xs, xlens, ys
+        else:
+            xs = batch[0]
+            if len(xs.shape) > 2:
+                xs = torch.hstack(xs)
+            else:
+                xs = xs.expand(size=(1, *xs.shape))
+
+            xlens = torch.tensor([x.shape[0] for x in xs])
+            return xs, xlens
+

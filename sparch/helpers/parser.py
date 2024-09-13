@@ -86,9 +86,9 @@ def add_training_options(parser):
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=["shd", "ssc", "hd", "sc"],
+        choices=["shd", "ssc", "hd", "sc", "cue"],
         default="shd",
-        help="Dataset name (shd, ssc, hd or sc).",
+        help="Dataset name (shd, ssc, hd, sc or cue).",
     )
     parser.add_argument(
         "--dataset-folder",

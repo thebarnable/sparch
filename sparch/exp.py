@@ -263,6 +263,9 @@ class Experiment:
         """
         if self.dataset == "shd" or self.dataset == "hd":
             logging.info(f"{self.dataset} does not have a validation split. Using test split.")
+        
+        if self.dataset == "cue":
+            logging.info(f"Cue accumulation not usable for training yet, just inferring individual samples")
 
         if self.dataset == "shd" or self.dataset == "ssc":
             if self.augment:
@@ -324,6 +327,36 @@ class Experiment:
                 num_workers=0,
                 pin_memory=True,
             )
+            test_loader = DataLoader(
+                testset,
+                batch_size=self.batch_size,
+                collate_fn=testset.generateBatch,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=True,
+            )
+        elif self.dataset == "cue":
+            trainset = CueAccumulationDataset(self.seed, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            train_loader = DataLoader(
+                trainset,
+                batch_size=self.batch_size,
+                collate_fn=trainset.generateBatch,
+                shuffle=True,
+                num_workers=0,
+                pin_memory=True,
+            )
+
+            valset = CueAccumulationDataset(self.seed, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
+            val_loader = DataLoader(
+                valset,
+                batch_size=self.batch_size,
+                collate_fn=valset.generateBatch,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=True,
+            )
+
+            testset = CueAccumulationDataset(self.seed, labeled=True, repeat=self.repeat, scale=self.dataset_scale)
             test_loader = DataLoader(
                 testset,
                 batch_size=self.batch_size,
