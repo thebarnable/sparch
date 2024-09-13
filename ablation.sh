@@ -40,20 +40,20 @@ elif [[ $SLURM_ARRAY_TASK_ID -eq 7 ]]; then # reference + one-spike-only
 elif [[ $SLURM_ARRAY_TASK_ID -eq 8 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only
   python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true
 elif [[ $SLURM_ARRAY_TASK_ID -eq 9 ]]; then # reference + one-spike-only + substep 5
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --substeps 5
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 5
 elif [[ $SLURM_ARRAY_TASK_ID -eq 10 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 5
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --substeps 5
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 5
 elif [[ $SLURM_ARRAY_TASK_ID -eq 11 ]]; then # reference + one-spike-only + substep 10
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --substeps 10
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 10
 elif [[ $SLURM_ARRAY_TASK_ID -eq 12 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 10
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --substeps 10
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 10
 elif [[ $SLURM_ARRAY_TASK_ID -eq 13 ]]; then # reference + one-spike-only + substep 20
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --substeps 20
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 20
 elif [[ $SLURM_ARRAY_TASK_ID -eq 14 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 20
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --substeps 20
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 20
 elif [[ $SLURM_ARRAY_TASK_ID -eq 15 ]]; then # reference + one-spike-only + substep 50
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --substeps 50
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 50
 elif [[ $SLURM_ARRAY_TASK_ID -eq 16 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 50
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --substeps 50
+  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 50
 fi
 

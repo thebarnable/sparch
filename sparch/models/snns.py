@@ -45,7 +45,6 @@ class SNN(nn.Module):
         self.bidirectional = args.bidirectional
         self.use_readout_layer = True
         self.single_spike = args.single_spike
-        self.substeps = args.substeps
         self.track_balance = args.track_balance
 
         # Init trainable parameters
@@ -99,11 +98,8 @@ class SNN(nn.Module):
                 raise NotImplementedError
 
         # Process all layers
-        for i, snn_lay in enumerate(self.snn):
-            if snn_lay.__class__ == RLIFLayer:
-                x = snn_lay(x, i==0) # TODO: i==0 super hacky, only works for RLIF currently
-            else:
-                x = snn_lay(x)
+        for snn_lay in self.snn:
+            x = snn_lay(x)
             if not snn_lay.__class__ == ReadoutLayer:
                 self.spikes.append(x)
                 if snn_lay.track_balance:
@@ -155,7 +151,6 @@ class LIFLayer(nn.Module):
         self.bidirectional = args.bidirectional
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
-        self.substeps = args.substeps
         self.threshold = 1.0
 
         # Trainable parameters
@@ -271,7 +266,6 @@ class adLIFLayer(nn.Module):
         self.a_lim = [-1.0, 1.0]
         self.b_lim = [0.0, 2.0]
         self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
-        self.substeps = args.substeps
         self.threshold = 1.0
 
         # Trainable parameters
@@ -397,7 +391,6 @@ class RLIFLayer(nn.Module):
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.single_spike = args.single_spike
         self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
-        self.substeps = args.substeps
         self.track_balance = args.track_balance
         self.threshold = 1.0
         self.input_size = input_size
@@ -427,7 +420,7 @@ class RLIFLayer(nn.Module):
         # Initialize dropout
         self.drop = nn.Dropout(p=args.dropout)
 
-    def forward(self, x, input_layer):
+    def forward(self, x):
 
         # Concatenate flipped sequence on batch dim
         if self.bidirectional:
@@ -461,7 +454,7 @@ class RLIFLayer(nn.Module):
             Wx = _Wx.reshape(Wx.shape[0], Wx.shape[1], Wx.shape[2])
 
         # Compute spikes via neuron dynamics
-        s, I_rec_inh, I_rec_exc = self._rlif_cell(Wx, input_layer)
+        s, I_rec_inh, I_rec_exc = self._rlif_cell(Wx)
 
         # Concatenate forward and backward sequences on feat dim
         if self.bidirectional:
@@ -473,21 +466,20 @@ class RLIFLayer(nn.Module):
         s = self.drop(s)
 
         if self.track_balance:
-            self.I_exc = I_rec_exc+torch.repeat_interleave(Wx_exc.detach(), self.substeps, dim=1)
-            self.I_inh = I_rec_inh+torch.repeat_interleave(Wx_inh.detach(), self.substeps, dim=1)
+            self.I_exc = I_rec_exc+Wx_exc.detach()
+            self.I_inh = I_rec_inh+Wx_inh.detach()
         gc.collect()
         return s
 
-    def _rlif_cell(self, Wx, input_layer):
+    def _rlif_cell(self, Wx):
 
         # Initializations
-        substeps = self.substeps if input_layer else 1
         device = Wx.device
-        self.v = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
+        self.v = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
-        s = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
-        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], substeps*Wx.shape[1], Wx.shape[2]).to(device)
+        s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
+        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
         alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
@@ -497,21 +489,18 @@ class RLIFLayer(nn.Module):
 
         # Loop over time axis
         for t in range(Wx.shape[1]):
-            
-            # Finer loop
-            for tt in range(substeps):
-                # Compute and save membrane potential (RLIF)
-                ut = alpha * (ut - st) + (1 - alpha) * (Wx[:, t, :] + torch.matmul(st, V))
-                self.v[:, substeps*t + tt, :] = ut.detach()
+            # Compute and save membrane potential (RLIF)
+            ut = alpha * (ut - st) + (1 - alpha) * (Wx[:, t, :] + torch.matmul(st, V))
+            self.v[:, t, :] = ut.detach()
 
-                # Compute spikes with surrogate gradient
-                st = self.spike_fct(ut - self.threshold)
-                s[:, substeps*t + tt, :] = st
+            # Compute spikes with surrogate gradient
+            st = self.spike_fct(ut - self.threshold)
+            s[:, t, :] = st
 
-                # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
-                if self.track_balance:
-                    I_rec_inh[:, substeps*t + tt, :], I_rec_exc[:, substeps*t + tt, :] = self._signed_matmul(st.detach(), V.detach())
-                    # TODO: V x st equivalence check
+            # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
+            if self.track_balance:
+                I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
+                # TODO: V x st equivalence check
 
         return s, I_rec_inh, I_rec_exc
 
