@@ -221,12 +221,6 @@ def add_training_options(parser):
         help="CUDA ID of GPU to use"
     )
     parser.add_argument(
-        "--substeps",
-        type=int,
-        default=1,
-        help="Integration substeps (for each sample of the input, we do <substeps> integration steps over neuron states)"
-    )
-    parser.add_argument(
         "--repeat",
         type=int,
         default=1,

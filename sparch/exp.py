@@ -60,7 +60,7 @@ class Experiment:
                     "_bdir" if self.bidirectional else "_udir" + \
                     "_reg" if self.use_regularizers else "_noreg" + \
                     "_lr" + str(self.lr) + \
-                    "_st" + str(self.substeps) + \
+                    "_repeat" + str(self.repeat) + \
                     "_singlespike" if self.single_spike else "").replace(".", "_")
 
         # Set seed

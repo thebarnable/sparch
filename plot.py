@@ -66,7 +66,7 @@ def plot_results():
             continue
         
         dataset, neuron, n_layers, n_neurons, dropout, norm, st = params_from_file_name(folder)
-        print(f"Results for {n_layers} layers, {n_neurons} {neuron} neurons on {dataset} (dropout = {dropout}, norm = {norm}, {st} substeps)")
+        print(f"Results for {n_layers} layers, {n_neurons} {neuron} neurons on {dataset} (dropout = {dropout}, norm = {norm}, {st}x repeated inputs)")
 
         validation_accs = []
         test_accs = []

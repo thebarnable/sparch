@@ -62,7 +62,7 @@ def run_sample():
     args.dropout = 0
     args.normalization = "none"
     args.track_balance = True
-    args.substeps = 20
+    args.repeat = 20
     args.plot = True
     args.batch_size = 1
     exp = Experiment(args)

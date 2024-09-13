@@ -35,7 +35,6 @@ class TestBEEP(unittest.TestCase):
         args.dropout = True
         args.normalization = "batchnorm"
         args.track_balance = True
-        args.substeps = 1
         exp = Experiment(args)
         
         data, _, label = next(iter(exp.train_loader))
@@ -76,7 +75,6 @@ class TestBEEP(unittest.TestCase):
         args.normalization = "none"
         args.single_spike = True
         args.track_balance = True
-        args.substeps = 1
         exp = Experiment(args)
         
         data, _, label = next(iter(exp.train_loader))
@@ -116,7 +114,6 @@ class TestBEEP(unittest.TestCase):
         args.n_layers = 2
         args.dropout = 0.1
         args.normalization = "batchnorm"
-        args.substeps = 1
         args.n_epochs = 2
         print(''.join(f' {k}={v}\n' for k, v in vars(args).items()))
         exp = Experiment(args)
