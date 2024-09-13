@@ -85,6 +85,7 @@ class SNN(nn.Module):
 
     def forward(self, x):
         # Reset tracking lists
+        self.inputs = x
         self.spikes = []
         self.voltages = []
         self.currents_exc = []
@@ -115,8 +116,8 @@ class SNN(nn.Module):
 
         return x, firing_rates
     
-    def plot(self, filename):
-        plot_network(self.spikes, self.layer_sizes, self.track_balance, self.currents_exc, self.currents_inh, self.voltages, False, lowpass=False, filename=filename)
+    def plot(self, filename, show=False, lowpass=True):
+        plot_network(self.inputs, self.spikes, self.layer_sizes, self.track_balance, self.currents_exc, self.currents_inh, self.voltages, show, lowpass=lowpass, filename=filename)
 
 class LIFLayer(nn.Module):
     """
