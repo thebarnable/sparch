@@ -44,7 +44,9 @@ class SpikingDataset(Dataset):
         dataset_folder,
         split,
         n_steps=100,
-        labeled=True
+        labeled=True,
+        repeat=1,
+        scale=1
     ):
 
         # Fixed parameters
@@ -55,6 +57,8 @@ class SpikingDataset(Dataset):
         self.max_time = 1.4
         self.time_bins = np.linspace(0, self.max_time, num=self.n_steps)
         self.labeled = labeled
+        self.repeat = repeat
+        self.scale = scale
 
         # Read data from h5py file
         filename = f"{dataset_folder}/{dataset}_{split}.h5"
@@ -90,6 +94,7 @@ class SpikingDataset(Dataset):
         xlens = torch.tensor([x.shape[0] for x in xs])
         ys = torch.LongTensor(ys).to(self.device)
 
+        xs = self.scale * xs.repeat_interleave(self.repeat, axis=1)
         return xs, xlens, ys
     
 
@@ -108,7 +113,7 @@ class CueAccumulationDataset(Dataset):
     t_interval (150ms) spikes on third 10 neurons (4% probability) as recall cue
     """
 
-    def __init__(self, seed=None, labeled=True):
+    def __init__(self, seed=None, labeled=True, repeat=1, scale=1):
         n_cues = 7
         f0 = 40
         t_cue = 100
@@ -116,7 +121,10 @@ class CueAccumulationDataset(Dataset):
         n_symbols = 4 # if 40 neurons: left cue (neurons 0-9), right cue (neurons 10-19), decision cue (neurons 20-29), noise (neurons 30-39)
         p_group = 0.3
 
+        self.repeat = repeat
         self.labeled = labeled
+        self.scale = scale
+
         self.dt = 1e-3
         self.t_interval = 150
         self.seq_len = n_cues*self.t_interval + t_wait
@@ -155,7 +163,8 @@ class CueAccumulationDataset(Dataset):
         input_spike_prob[:, -self.t_interval:, 2*n_channel:3*n_channel] = prob0
         input_spike_prob[:, :, 3*n_channel:] = prob0/4.
         input_spikes = self.generate_poisson_noise_np(input_spike_prob, seed)
-        self.x = torch.tensor(input_spikes).float()
+        self.x = self.scale * torch.tensor(input_spikes).float()
+        self.x = self.x.repeat_interleave(self.repeat, axis=1)
 
         # Generate targets
         target_nums = np.zeros((length, self.seq_len), dtype=int)

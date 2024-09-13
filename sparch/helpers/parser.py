@@ -97,6 +97,12 @@ def add_training_options(parser):
         help="Path to dataset folder.",
     )
     parser.add_argument(
+        "--dataset-scale",
+        type=float,
+        default=1.0,
+        help="Each spike in the dataset is multiplied by this factor"
+    )
+    parser.add_argument(
         "--log",
         action='store_true',
         default=False,
@@ -219,5 +225,11 @@ def add_training_options(parser):
         type=int,
         default=1,
         help="Integration substeps (for each sample of the input, we do <substeps> integration steps over neuron states)"
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="How many times to repeat each spike"
     )
     return parser
