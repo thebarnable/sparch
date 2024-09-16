@@ -110,6 +110,7 @@ class TestBEEP(unittest.TestCase):
         args.model = "BalancedRLIF"
         args.dataset = "cue"
         args.n_layers = 1
+        args.neurons = 400
         args.dropout = 0
         args.normalization = "none"
         args.single_spike = True
@@ -118,6 +119,7 @@ class TestBEEP(unittest.TestCase):
         args.batch_size = 1
         args.auto_encoder = True
         args.sigma_v = 0.0
+        args.dataset_scale = 200
         exp = Experiment(args)
         
         data, _ = next(iter(exp.train_loader))
