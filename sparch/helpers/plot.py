@@ -25,7 +25,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
     N_NEURONS_TO_PLOT=len(NEURONS_TO_PLOT)
 
     # cast data lists to torch tensors
-    spikes = torch.stack(spikes)[LAYER, BATCH, :, :].cpu()  # layers x batch x time x neurons
+    spikes = spikes[LAYER, BATCH, :, :].cpu()  # layers x batch x time x neurons
 
     t = list(range(0,spikes.shape[0]))
     # setup spike raster plot
@@ -67,9 +67,9 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
     if balance:
         for i in range(1, 1+2*N_NEURONS_TO_PLOT, 2):
             neuron = NEURONS_TO_PLOT[int(i/2)]
-            currents_exc_i = torch.stack(currents_exc)[LAYER, BATCH, :, neuron].cpu()
-            currents_inh_i = torch.stack(currents_inh)[LAYER, BATCH, :, neuron].cpu()
-            v = torch.stack(voltages)[LAYER, BATCH, :, neuron].cpu()
+            currents_exc_i = currents_exc[LAYER, BATCH, :, neuron].cpu()
+            currents_inh_i = currents_inh[LAYER, BATCH, :, neuron].cpu()
+            v = voltages[LAYER, BATCH, :, neuron].cpu()
             if lowpass:
                 b, a = butter(4, 0.05, btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
                 currents_exc_i = np.array(filtfilt(b, a, currents_exc_i))

@@ -47,14 +47,13 @@ class TestBEEP(unittest.TestCase):
 
         pred = torch.argmax(output, dim=1)
         acc = torch.mean((label==pred).float())
-        spikes = torch.stack(exp.net.spikes, dim=0)
         # torch.save({"output": output,
         #             "firing_rates": firing_rates,
         #             "loss": loss,
         #             "acc": acc,
-        #             "spikes": spikes}, "refs/bptt.pth")
+        #             "spikes": exp.net.spikes}, "refs/bptt.pth")
         ref = torch.load("refs/bptt.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
-        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
+        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - exp.net.spikes).max(), E_small)
         self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
         self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)
         self.assertLess(torch.abs(ref["loss"].to(exp.device) - loss).max(), E_small)
@@ -88,27 +87,23 @@ class TestBEEP(unittest.TestCase):
 
         pred = torch.argmax(output, dim=1)
         acc = torch.mean((label==pred).float())
-        spikes = torch.stack(exp.net.spikes, dim=0)
-        currents_exc = torch.stack(exp.net.currents_exc, dim=0)
-        currents_inh = torch.stack(exp.net.currents_inh, dim=0)
-        voltages = torch.stack(exp.net.voltages, dim=0)
         # torch.save({"output": output,
         #             "firing_rates": firing_rates,
         #             "loss": loss,
         #             "acc": acc,
-        #             "spikes": spikes,
-        #             "currents_exc": currents_exc,
-        #             "currents_inh": currents_inh,
-        #             "voltages": voltages}, "refs/beep.pth")
+        #             "spikes": exp.net.spikes,
+        #             "currents_exc": exp.net.currents_exc,
+        #             "currents_inh": exp.net.currents_inh,
+        #             "voltages": exp.net.voltages}, "refs/beep.pth")
         ref = torch.load("refs/beep.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
-        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
+        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - exp.net.spikes).max(), E_small)
         self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
         self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)
         self.assertLess(torch.abs(ref["loss"].to(exp.device) - loss).max(), E_small)
         self.assertLess(torch.abs(ref["acc"].to(exp.device) - acc).max(), E_small)
-        self.assertLess(torch.abs(ref["currents_exc"].to(exp.device) - currents_exc).max(), E_small)
-        self.assertLess(torch.abs(ref["currents_inh"].to(exp.device) - currents_inh).max(), E_small)
-        self.assertLess(torch.abs(ref["voltages"].to(exp.device) - voltages).max(), E_small)
+        self.assertLess(torch.abs(ref["currents_exc"].to(exp.device) - exp.net.currents_exc).max(), E_small)
+        self.assertLess(torch.abs(ref["currents_inh"].to(exp.device) - exp.net.currents_inh).max(), E_small)
+        self.assertLess(torch.abs(ref["voltages"].to(exp.device) - exp.net.voltages).max(), E_small)
 
     def test_balanced_autoencoder(self):
         parser = argparse.ArgumentParser(description="Model training on spiking speech commands datasets.")
@@ -137,12 +132,11 @@ class TestBEEP(unittest.TestCase):
         output, firing_rates = exp.net(data)
 
         pred = torch.argmax(output, dim=1)
-        spikes = torch.stack(exp.net.spikes, dim=0)
         # torch.save({"output": output,
         #             "firing_rates": firing_rates,
-        #             "spikes": spikes}, "refs/balanced_ae.pth")
+        #             "spikes": exp.net.spikes}, "refs/balanced_ae.pth")
         ref = torch.load("refs/balanced_ae.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
-        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
+        self.assertLess(torch.abs(ref["spikes"].to(exp.device) - exp.net.spikes).max(), E_small)
         self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
         self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)  
 
