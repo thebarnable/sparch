@@ -74,7 +74,6 @@ def run_balanced_ae_sample():
     data = data.to(exp.device)
     output, firing_rates = exp.net(data)
     exp.net.plot(RESULTS_FOLDER+"/plots/plot.png", show=True)
-    spikes = torch.stack(exp.net.spikes, dim=0)
 
 def run_sample():
     if os.path.exists(RESULTS_FOLDER) and os.path.isdir(RESULTS_FOLDER):
@@ -106,7 +105,6 @@ def run_sample():
 
     pred = torch.argmax(output, dim=1)
     acc = torch.mean((label==pred).float())
-    spikes = torch.stack(exp.net.spikes, dim=0)
     
 if __name__ == '__main__':
     run_balanced_ae_sample()

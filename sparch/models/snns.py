@@ -111,13 +111,19 @@ class SNN(nn.Module):
             x = snn_lay(x)
             if not snn_lay.__class__ == ReadoutLayer:
                 self.spikes.append(x)
-                if snn_lay.track_balance:
+                self.voltages.append(snn_lay.v)
+                if self.track_balance:
                     self.currents_exc.append(snn_lay.I_exc)
                     self.currents_inh.append(snn_lay.I_inh)
-                    self.voltages.append(snn_lay.v)
+
+        self.spikes = torch.stack(self.spikes)
+        self.voltages = torch.stack(self.voltages)
+        if self.track_balance:
+            self.currents_exc = torch.stack(self.currents_exc)
+            self.currents_inh = torch.stack(self.currents_inh)
 
         # Compute mean firing rate of each spiking neuron
-        firing_rates = torch.cat(self.spikes, dim=2).mean(dim=(0, 1))
+        firing_rates = self.spikes.mean(dim=(1, 2))
 
         return x, firing_rates
     
@@ -174,14 +180,10 @@ class BalancedRLIFLayer(nn.Module):
         Wx = self.W(x)
         if self.track_balance:
             with torch.no_grad():
-                Wx_inh = self.h*torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t()).detach()
-                Wx_exc = self.h*torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t()).detach()
+                self.I_inh = self.h*torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
+                self.I_exc = self.h*torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
 
-        s, I_rec_inh, I_rec_exc = self._balanced_rlif_cell(Wx)
-
-        if self.track_balance:
-            self.I_exc = I_rec_exc + Wx_exc
-            self.I_inh = I_rec_inh + Wx_inh
+        s = self._balanced_rlif_cell(Wx)
         gc.collect()
         return s
 
@@ -191,7 +193,6 @@ class BalancedRLIFLayer(nn.Module):
         sim_time = Wx.shape[1]
         device = Wx.device
         v     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
-        r     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
         o     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
         i_fast= torch.zeros(Wx.shape[0], self.hidden_size).to(device)
         V = self.V.weight.clone()
@@ -199,27 +200,27 @@ class BalancedRLIFLayer(nn.Module):
         ## init for tracking
         self.v = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
         s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
-        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
-        
+
         for k in range(sim_time):
             # update synaptic currents
             if self.track_balance:
-                I_rec_inh[:, k, :], I_rec_exc[:, k, :] = self._signed_matmul(o.detach(), V.detach()) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
-            #i_fast = torch.matmul(V, o[0]) # --> TODO: fix batches. is below correct?
+                with torch.no_grad():
+                    i_fast_inh, i_fast_exc = self._signed_matmul(o, V) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
+                    self.I_inh[:, k, :] += i_fast_inh
+                    self.I_exc[:, k, :] += i_fast_exc
             i_fast = torch.matmul(o, V.t())
 
             # update membrane voltage
             v = (1-self.h*self.lambda_v) * v + self.h * (Wx[:,k,:] + i_fast) + self.sigma_v * torch.randn_like(v) * np.sqrt(self.h)
-            self.v[:, k, :] = v.detach()
-
-            # update rate
-            r = (1-self.h*self.lambda_d) * r + self.h*o
 
             # spikes
             o = self.spike_fct(v.clone(), v_thresh)/self.h
+            
+            # track neuron activity and state
+            self.v[:, k, :] = v.detach()
             s[:, k, :] = o
 
-        return s, I_rec_inh, I_rec_exc
+        return s
 
     def _signed_matmul(self, A, B):
         # Compute C:=A x B for matrices A & B, split up into positive and negative components
@@ -547,18 +548,8 @@ class RLIFLayer(nn.Module):
         Wx = self.W(x)
         if self.track_balance:
             with torch.no_grad():
-                # self.W_exc = nn.Linear(self.input_size, self.hidden_size, bias=False)
-                # self.W_exc.weight.data = torch.where(self.W.weight.data>=0, self.W.weight.data, 0)
-                # self.W_inh = nn.Linear(self.input_size, self.hidden_size, bias=False)
-                # self.W_inh.weight.data = torch.where(self.W.weight.data<0, self.W.weight.data, 0)
-                # Wx_inh = self.W_inh(x)  # = I_in_inh
-                # Wx_exc = self.W_exc(x)  # = I_in_exc
-
-                #self.W_exc.copy_(torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)))
-                #self.W_inh.copy_(torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)))
-                
-                Wx_inh = torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
-                Wx_exc = torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
+                self.I_inh = torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
+                self.I_exc = torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
 
         # Apply normalization
         if self.normalize:
@@ -566,7 +557,7 @@ class RLIFLayer(nn.Module):
             Wx = _Wx.reshape(Wx.shape[0], Wx.shape[1], Wx.shape[2])
 
         # Compute spikes via neuron dynamics
-        s, I_rec_inh, I_rec_exc = self._rlif_cell(Wx)
+        s = self._rlif_cell(Wx)
 
         # Concatenate forward and backward sequences on feat dim
         if self.bidirectional:
@@ -576,10 +567,6 @@ class RLIFLayer(nn.Module):
 
         # Apply dropout
         s = self.drop(s)
-
-        if self.track_balance:
-            self.I_exc = I_rec_exc+Wx_exc.detach()
-            self.I_inh = I_rec_inh+Wx_inh.detach()
         gc.collect()
         return s
 
@@ -591,7 +578,6 @@ class RLIFLayer(nn.Module):
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
-        I_rec_inh, I_rec_exc = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device), torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
         alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
@@ -603,18 +589,20 @@ class RLIFLayer(nn.Module):
         for t in range(Wx.shape[1]):
             # Compute and save membrane potential (RLIF)
             ut = alpha * (ut - st) + (1 - alpha) * (Wx[:, t, :] + torch.matmul(st, V))
-            self.v[:, t, :] = ut.detach()
 
             # Compute spikes with surrogate gradient
             st = self.spike_fct(ut - self.threshold)
+
+            # Track neuron state and activity
+            self.v[:, t, :] = ut.detach()
             s[:, t, :] = st
-
-            # Compute input currents if necessary (note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V))
             if self.track_balance:
-                I_rec_inh[:, t, :], I_rec_exc[:, t, :] = self._signed_matmul(st.detach(), V.detach())
-                # TODO: V x st equivalence check
+                with torch.no_grad():
+                    i_fast_inh, i_fast_exc = self._signed_matmul(st, V) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
+                    self.I_inh[:, t, :] += i_fast_inh
+                    self.I_exc[:, t, :] += i_fast_exc
 
-        return s, I_rec_inh, I_rec_exc
+        return s
 
     def _signed_matmul(self, A, B):
         # Compute C:=A x B for matrices A & B, split up into positive and negative components
