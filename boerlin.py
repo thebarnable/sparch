@@ -212,7 +212,7 @@ def main(args, trial = None):
     r[k+1] = (1-h*lambda_d) * r[k] + h*o[k]
 
     # update output
-    x_snn[k+1] = np.matmul(w_out, r[k+1])
+    x_snn[k+1] = (1-h*lambda_d) * x_snn[k] + h*np.matmul(w_out,o[k]) #np.matmul(w_out, r[k+1])
 
     # spikes
     spike_ids = np.asarray(np.argwhere(v[k+1] > v_thresh))

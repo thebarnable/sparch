@@ -67,7 +67,7 @@ class TestBEEP(unittest.TestCase):
         args = parser.parse_args()
         args.seed = 0
         args.new_exp_folder = FOLDER+"/test_beep_sample"
-        args.model = "RLIF"
+        args.model = "BalancedRLIF"
         args.dataset = "shd"
         args.dataset_folder = "SHD"
         args.n_layers = 1
@@ -75,6 +75,7 @@ class TestBEEP(unittest.TestCase):
         args.normalization = "none"
         args.single_spike = True
         args.track_balance = True
+        args.dataset_scale = 200
         exp = Experiment(args)
         
         data, _, label = next(iter(exp.train_loader))
@@ -88,17 +89,26 @@ class TestBEEP(unittest.TestCase):
         pred = torch.argmax(output, dim=1)
         acc = torch.mean((label==pred).float())
         spikes = torch.stack(exp.net.spikes, dim=0)
+        currents_exc = torch.stack(exp.net.currents_exc, dim=0)
+        currents_inh = torch.stack(exp.net.currents_inh, dim=0)
+        voltages = torch.stack(exp.net.voltages, dim=0)
         # torch.save({"output": output,
         #             "firing_rates": firing_rates,
         #             "loss": loss,
         #             "acc": acc,
-        #             "spikes": spikes}, "refs/beep.pth")
+        #             "spikes": spikes,
+        #             "currents_exc": currents_exc,
+        #             "currents_inh": currents_inh,
+        #             "voltages": voltages}, "refs/beep.pth")
         ref = torch.load("refs/beep.pth", map_location=exp.device if torch.cuda.is_available() else 'cpu', weights_only=False)
         self.assertLess(torch.abs(ref["spikes"].to(exp.device) - spikes).max(), E_small)
         self.assertLess(torch.abs(ref["output"].to(exp.device) - output).max(), E_small)
         self.assertLess(torch.abs(ref["firing_rates"].to(exp.device) - firing_rates).max(), E_small)
         self.assertLess(torch.abs(ref["loss"].to(exp.device) - loss).max(), E_small)
         self.assertLess(torch.abs(ref["acc"].to(exp.device) - acc).max(), E_small)
+        self.assertLess(torch.abs(ref["currents_exc"].to(exp.device) - currents_exc).max(), E_small)
+        self.assertLess(torch.abs(ref["currents_inh"].to(exp.device) - currents_inh).max(), E_small)
+        self.assertLess(torch.abs(ref["voltages"].to(exp.device) - voltages).max(), E_small)
 
     def test_balanced_autoencoder(self):
         parser = argparse.ArgumentParser(description="Model training on spiking speech commands datasets.")
