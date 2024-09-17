@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 import os
 import shutil
+import sys
 
 from sparch.exp import Experiment
 from sparch.helpers.parser import add_model_options
@@ -172,11 +173,13 @@ class TestBEEP(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
-    # suite = unittest.TestSuite()
-    # suite.addTest(TestBEEP('test_balanced_autoencoder'))
-    # suite.addTest(TestBEEP('test_bptt_epoch'))
-    # suite.addTest(TestBEEP('test_bptt_sample'))
-    # suite.addTest(TestBEEP('test_beep_sample'))
-    # runner = unittest.TextTestRunner()
-    # runner.run(suite)
+    # Run all tests via "python testing.py". Run individual tests via "python testing.py <test_name>", e.g. "python testing.py test_bptt_epoch".
+
+    if len(sys.argv) == 1:
+        unittest.main()
+    else:
+        test_name = sys.argv.pop(1)
+        suite = unittest.TestSuite()
+        suite.addTest(TestBEEP(test_name))
+        runner = unittest.TextTestRunner()
+        runner.run(suite)
