@@ -21,7 +21,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
     LAYER = 0
     BATCH = 0
     NEURON = 0
-    NEURONS_TO_PLOT=[0,1,121]
+    NEURONS_TO_PLOT=[121]
     N_NEURONS_TO_PLOT=len(NEURONS_TO_PLOT)
 
     # cast data lists to torch tensors
@@ -45,7 +45,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
     # create plots
     plt.rc('xtick', labelsize=8) #fontsize of the x tick labels
     plt.rc('ytick', labelsize=8) #fontsize of the y tick labels
-    fig, axs = plt.subplots(2+N_NEURONS_TO_PLOT*2, 1, sharex=True, gridspec_kw={'height_ratios': [3] + 2*N_NEURONS_TO_PLOT*[1] + [5]})
+    fig, axs = plt.subplots(2+N_NEURONS_TO_PLOT*2, 1, sharex=True, gridspec_kw={'height_ratios': [3] + 2*N_NEURONS_TO_PLOT*[5] + [5]}, figsize=(30,15))
     fig.subplots_adjust(hspace=0)
 
     # plot
@@ -89,7 +89,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
 
     plt.xlabel('Timesteps')
     if filename!="":
-        plt.savefig(filename, dpi=250)
+        plt.savefig(filename, dpi=600)
     if show:
         plt.show()
     plt.close()

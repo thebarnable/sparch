@@ -10,6 +10,42 @@ def add_model_options(parser):
         help="Type of ANN or SNN model.",
     )
     parser.add_argument(
+        "--balance",
+        action='store_true',
+        default=False,
+        help="If True, the network will be initialized according to the balance theory.",
+    )
+    parser.add_argument(
+        "--fix-w-out",
+        action='store_true',
+        default=False,
+        help="If True, the readout layer will have fixed weights.",
+    )
+    parser.add_argument(
+        "--fix-w-in",
+        action='store_true',
+        default=False,
+        help="If True, the input layer will have fixed weights.",
+    )
+    parser.add_argument(
+        "--fix-w-rec",
+        action='store_true',
+        default=False,
+        help="If True, the recurrent weights will be fixed.",
+    )
+    parser.add_argument(
+        "--fix-tau-out",
+        action='store_true',
+        default=False,
+        help="If True, the readout layer will have fixed time constants.",
+    )
+    parser.add_argument(
+        "--fix-tau-rec",
+        action='store_true',
+        default=False,
+        help="If True, the recurrent layer will have fixed time constants.",
+    )
+    parser.add_argument(
         "--n-layers",
         type=int,
         default=3,
@@ -267,5 +303,19 @@ def add_training_options(parser):
         type=int,
         default=1,
         help="How many times to repeat each spike"
+    )
+    parser.add_argument(
+        "--balance-setting", 
+        type=str, 
+        default="NONE", 
+        help="Balance setting",
+        choices=["S1", "S2", "S3", "S4", "S5"]
+    )
+    parser.add_argument(
+        "--balance-ae-setting", 
+        type=str, 
+        default="NONE", 
+        help="Balance setting for autoencoder",
+        choices=["S1", "S2"]
     )
     return parser
