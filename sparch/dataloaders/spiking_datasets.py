@@ -59,6 +59,8 @@ class SpikingDataset(Dataset):
         self.labeled = labeled
         self.repeat = repeat
         self.scale = scale
+        
+        self.t_crop = 0
 
         # Read data from h5py file
         filename = f"{dataset_folder}/{dataset}_{split}.h5"
@@ -124,10 +126,11 @@ class CueAccumulationDataset(Dataset):
         self.repeat = repeat
         self.labeled = labeled
         self.scale = scale
-
+        
         self.dt = 1e-3
         self.t_interval = 150
         self.seq_len = n_cues*self.t_interval + t_wait
+        self.t_crop = n_cues * self.t_interval
         self.n_units = 40
         self.n_classes = 2    # This is a binary classification task, so using two output units with a softmax activation redundant
         n_channel = self.n_units // n_symbols
@@ -167,10 +170,7 @@ class CueAccumulationDataset(Dataset):
         self.x = self.x.repeat_interleave(self.repeat, axis=1)
 
         # Generate targets
-        target_nums = np.zeros((length, self.seq_len), dtype=int)
-        target_nums[:, :] = np.transpose(
-            np.tile(np.sum(cue_assignments, axis=1) > int(n_cues/2), (self.seq_len, 1)))
-        self.y = torch.tensor(target_nums).long()
+        self.y = torch.from_numpy((np.sum(cue_assignments, axis=1) > int(n_cues/2)).astype(int))
 
     def generate_poisson_noise_np(self, prob_pattern, freezing_seed=None):
         if isinstance(prob_pattern, list):
@@ -197,7 +197,7 @@ class CueAccumulationDataset(Dataset):
             xlens = torch.tensor([x.shape[0] for x in xs])
             #ys = torch.LongTensor(ys).to(self.device)
             if len(xs) > 1:
-                xs, ys = torch.hstack(xs), torch.hstack(ys)
+                xs, ys = torch.stack(xs, dim=0), torch.stack(ys, dim=0)
             else:
                 xs, ys = xs[0].expand(size=(1,*xs[0].shape)), ys[0].expand(size=(1,*ys[0].shape))
 

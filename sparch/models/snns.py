@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import gc
+import scipy
 
 from sparch.helpers.plot import plot_network
 import sparch.helpers.surrogate as surrogate
@@ -50,8 +51,17 @@ class SNN(nn.Module):
 
         # Check params
         if args.auto_encoder:
-            if args.n_layers != 1 or args.model != "BalancedRLIF":
-                raise ValueError("Auto-encoder requires a single BalancedRLIF layer.")
+            if args.n_layers != 1 or not args.balance:
+                raise ValueError("Auto-encoder requires a single balanced RLIF layer.")
+            
+        if args.balance and args.model != "RLIF":
+            raise ValueError("Balance is only available for RLIF model yet.")
+        
+        # Register dummy parameter. otherwise optimizer will complain about empty parameter list if nothing is learned
+        if args.auto_encoder:
+            self.register_parameter("dummy", nn.Parameter(torch.Tensor([0.0])))
+
+            
 
         # Init trainable parameters
         self.snn = self._init_layers(args)
@@ -78,14 +88,13 @@ class SNN(nn.Module):
 
         # Readout layer
         if self.use_readout_layer:
-            decoder = snn[-1].W.weight.data.detach().T if args.auto_encoder else None
+            decoder = snn[-1].W.data.detach().T if args.auto_encoder else None
             snn.append(
                 ReadoutLayer(
                     input_size=int(input_size),
                     hidden_size=int(self.layer_sizes[-1]),
                     args=args,
-                    euler=args.auto_encoder,
-                    weight_init=decoder
+                    init_weight=decoder
                 )
             )
 
@@ -113,6 +122,9 @@ class SNN(nn.Module):
                 self.spikes.append(x)
                 self.voltages.append(snn_lay.v)
                 if self.track_balance:
+                    if not (torch.isfinite(snn_lay.I_exc).all() and torch.isfinite(snn_lay.I_inh).all()):
+                        print("Warning: currents are NaN, setting to 0.0")
+                        print("Number of NaNs: ", torch.logical_not(torch.isfinite(snn_lay.I_exc)).sum(), torch.logical_not(torch.isfinite(snn_lay.I_inh)).sum())
                     self.currents_exc.append(snn_lay.I_exc)
                     self.currents_inh.append(snn_lay.I_inh)
 
@@ -124,108 +136,21 @@ class SNN(nn.Module):
 
         # Compute mean firing rate of each spiking neuron
         firing_rates = self.spikes.mean(dim=(1, 2))
+        
+        if self.track_balance:
+            # Assume only one layer => [0]
+            median_exc = scipy.signal.medfilt(self.currents_exc[0].cpu().numpy(), kernel_size=(1, 5, 1))
+            median_inh = scipy.signal.medfilt(self.currents_inh[0].cpu().numpy(), kernel_size=(1, 5, 1))
+            balance_arr = np.array([[np.corrcoef(median_exc[b, :,  d], median_inh[b, :, d])[0][1] for d in range(median_exc.shape[2])] for b in range(median_exc.shape[0])])
+            balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
+            balance = -np.mean(balance_arr)
+                
+            self.balance_val = balance
 
         return x, firing_rates
     
     def plot(self, filename, show=False, lowpass=True):
         plot_network(self.inputs, self.spikes, self.layer_sizes, self.track_balance, self.currents_exc, self.currents_inh, self.voltages, show, lowpass=lowpass, filename=filename)
-
-class BalancedRLIFLayer(nn.Module):
-    def __init__(
-        self,
-        input_size,
-        hidden_size,
-        args
-    ):
-        super().__init__()
-
-        # Fixed parameters
-        self.bidirectional = args.bidirectional # unused
-        self.batch_size = args.batch_size * (1 + self.bidirectional)
-        self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
-        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
-        self.track_balance = args.track_balance
-        self.threshold = 1.0
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.repeat = args.repeat
-
-        self.lambda_v = args.lambda_v
-        self.lambda_d = args.lambda_d
-        self.sigma_v  = args.sigma_v
-        self.h        = args.h
-        self.mu       = args.mu
-        self.nu       = args.nu
-
-        # Trainable parameters
-        self.W = nn.Linear(input_size, hidden_size, bias=False)
-        self.W.weight.data = torch.bernoulli(torch.full((hidden_size, input_size), 0.7)) * torch.empty(hidden_size, input_size).uniform_(-0.1, 0.1)
-        self.V = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.V.weight.data = self.W.weight.data @ self.W.weight.data.T + self.mu * (self.lambda_d**2) * torch.eye(hidden_size)
-
-        self.v_thresh = 0.5*(self.nu * self.lambda_d + self.mu * self.lambda_d**2 + torch.diagonal(self.V.weight.data))
-
-        self.V.weight.data = -self.V.weight.data
-
-        print("  Summary:")
-        w_in = self.W.weight.data.detach().cpu().numpy()
-        w_fast = self.V.weight.data.detach().cpu().numpy()
-        v_thresh = self.v_thresh.detach().cpu().numpy()
-        print(f"    w_in {w_in.shape}: min={np.min(w_in):.4f}, max={np.max(w_in):.4f}, mean={np.mean(w_in):.4f}, std={np.std(w_in):.4f}")
-        print(f"    w_fast {w_fast.shape}: min={np.min(w_fast):.4f}, max={np.max(w_fast):.4f}, mean={np.mean(w_fast):.4f}, std={np.std(w_fast):.4f}")
-        print(f"    v_thresh {v_thresh.shape}: min={np.min(v_thresh):.4f}, max={np.max(v_thresh):.4f}, mean={np.mean(v_thresh):.4f}, std={np.std(v_thresh):.4f}")
-        print(f"    ")
-
-    def forward(self, x):
-        Wx = self.W(x)
-        if self.track_balance:
-            with torch.no_grad():
-                self.I_inh = self.h*torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
-                self.I_exc = self.h*torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
-
-        s = self._balanced_rlif_cell(Wx)
-        gc.collect()
-        return s
-
-    def _balanced_rlif_cell(self, Wx):
-        # solve EBN with forward euler
-        ## init for calc
-        sim_time = Wx.shape[1]
-        device = Wx.device
-        v     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
-        o     = torch.zeros(Wx.shape[0], self.hidden_size).to(device)
-        i_fast= torch.zeros(Wx.shape[0], self.hidden_size).to(device)
-        V = self.V.weight.clone()
-        v_thresh = self.v_thresh.to(device)
-        ## init for tracking
-        self.v = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
-        s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
-
-        for k in range(sim_time):
-            # update synaptic currents
-            if self.track_balance:
-                with torch.no_grad():
-                    i_fast_inh, i_fast_exc = self._signed_matmul(o, V) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
-                    self.I_inh[:, k, :] += i_fast_inh
-                    self.I_exc[:, k, :] += i_fast_exc
-            i_fast = torch.matmul(o, V.t())
-
-            # update membrane voltage
-            v = (1-self.h*self.lambda_v) * v + self.h * (Wx[:,k,:] + i_fast) + self.sigma_v * torch.randn_like(v) * np.sqrt(self.h)
-
-            # spikes
-            o = self.spike_fct(v.clone(), v_thresh)/self.h
-            
-            # track neuron activity and state
-            self.v[:, k, :] = v.detach()
-            s[:, k, :] = o
-
-        return s
-
-    def _signed_matmul(self, A, B):
-        # Compute C:=A x B for matrices A & B, split up into positive and negative components
-        # Returns: C_neg (AxB for negative elements of A, rest set to 0), C_pos (AxB for positive elements of A, rest set to 0)
-        return self.h * torch.mm(A, torch.where(B<0, B, 0)), self.h * torch.mm(A, torch.where(B>=0, B, 0))
 
 
 class LIFLayer(nn.Module):
@@ -501,25 +426,73 @@ class RLIFLayer(nn.Module):
         # Fixed parameters
         self.bidirectional = args.bidirectional
         self.batch_size = args.batch_size * (1 + self.bidirectional)
-        self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
+        ref_param = np.log(1-args.h*args.lambda_v)
+        self.alpha_lim = [np.exp(ref_param*10), np.exp(ref_param/10)] if args.balance and not args.balance_setting in ["S1", "S3"] else [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.single_spike = args.single_spike
         self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
         self.track_balance = args.track_balance
-        self.threshold = 1.0
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.repeat = args.repeat
+        self.fix_w_in = args.fix_w_in
+        self.fix_w_rec = args.fix_w_rec
+        self.fix_tau_rec = args.fix_tau_rec
+        
+        self.lambda_v = args.lambda_v
+        self.lambda_d = args.lambda_d
+        self.sigma_v  = args.sigma_v
+        self.h        = args.h
+        self.mu       = args.mu
+        self.nu       = args.nu
+        
+        self.balance = args.balance
+        self.setting = args.balance_setting
 
-        # Trainable parameters
-        self.W = nn.Linear(input_size, hidden_size, bias=False)
-        self.V = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.alpha = nn.Parameter(torch.Tensor(hidden_size))
-
-        nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
-        nn.init.orthogonal_(self.V.weight)
-
-        # if self.track_balance:
-        #     self.register_buffer('W_exc', torch.zeros_like(self.W.weight))
-        #     self.register_buffer('W_inh', torch.zeros_like(self.W.weight))
+        # Trainable parameters        
+        if self.fix_w_in:
+            self.register_buffer("W", torch.Tensor(hidden_size, input_size))
+        else:
+            self.W = nn.Parameter(torch.Tensor(hidden_size, input_size))
+        
+        if self.fix_w_rec:
+            self.register_buffer("V", torch.Tensor(hidden_size, hidden_size))
+        else:
+            self.V = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+            
+        if self.fix_tau_rec:
+            self.register_buffer("alpha", torch.Tensor(hidden_size))
+        else:
+            self.alpha = nn.Parameter(torch.Tensor(hidden_size))
+        
+        if self.balance:
+            self.W.data = torch.bernoulli(torch.full((hidden_size, input_size), 0.7)) * torch.empty(hidden_size, input_size).uniform_(-0.1, 0.1)
+            self.V.data = self.W @ self.W.T + self.mu * (self.lambda_d**2) * torch.eye(hidden_size)
+            self.alpha.data = torch.full((hidden_size,), 1-self.h*self.lambda_v)
+            if args.auto_encoder and args.balance_ae_setting == "S1":
+                self.alpha.data = nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
+            elif args.auto_encoder and args.balance_ae_setting == "S2":
+                self.alpha.data = nn.init.constant_(self.alpha, args.ae_fac * (1-self.h*self.lambda_v))
+            
+            self.v_thresh = 0.5*(self.nu * self.lambda_d + self.mu * self.lambda_d**2 + torch.diagonal(self.V.data))
+                
+            self.V.data = -self.V.data
+        else:
+            #torch.manual_seed(20)
+            nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
+            nn.init.orthogonal_(self.V)
+            nn.init.uniform_(self.W, -np.sqrt(1/input_size), np.sqrt(1/input_size))
+            
+            #print("Alpha: ", self.alpha[:5])
+            #print("V: ", self.V[:5, :5])
+            #print("W: ", self.W[:5, :5])
+            
+            self.v_thresh = torch.tensor([1.0])
+            
+        print("Recurrent Layer Initialization Information:")
+        print("v_thresh | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.v_thresh.min(), self.v_thresh.max(), self.v_thresh.mean()))
+        print("W        | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.W.data.min(), self.W.data.max(), self.W.data.mean()))
+        print("V        | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.V.data.min(), self.V.data.max(), self.V.data.mean()))
+        print("alpha    | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.alpha.min(), self.alpha.max(), self.alpha.mean()))
 
         # Initialize normalization
         self.normalize = False
@@ -545,11 +518,17 @@ class RLIFLayer(nn.Module):
             self.batch_size = x.shape[0]
 
         # Feed-forward affine transformations (all steps in parallel)
-        Wx = self.W(x)
+        Wx = torch.matmul(x, self.W.t())
         if self.track_balance:
             with torch.no_grad():
-                self.I_inh = torch.matmul(x, torch.where(self.W.weight < 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
-                self.I_exc = torch.matmul(x, torch.where(self.W.weight >= 0, self.W.weight, torch.zeros_like(self.W.weight)).t())
+                self.I_inh = torch.matmul(x, torch.where(self.W < 0, self.W, torch.zeros_like(self.W)).t())
+                self.I_exc = torch.matmul(x, torch.where(self.W >= 0, self.W, torch.zeros_like(self.W)).t())
+                
+                if not (torch.isfinite(self.I_exc).all() and torch.isfinite(self.I_inh).all()):
+                    print("Warning: currents are NaN, setting to 0.0")
+                    print("Number of NaNs: ", torch.logical_not(torch.isfinite(self.I_exc)).sum(), torch.logical_not(torch.isfinite(self.I_inh)).sum())
+                    print("Number of NaNs in x: ", torch.logical_not(torch.isfinite(x)).sum())
+                    print("Number of NaNs in W: ", torch.logical_not(torch.isfinite(self.W)).sum())
 
         # Apply normalization
         if self.normalize:
@@ -573,29 +552,53 @@ class RLIFLayer(nn.Module):
     def _rlif_cell(self, Wx):
 
         # Initializations
+        sim_time = Wx.shape[1]
         device = Wx.device
         self.v = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
-        ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
-        st = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
+        #torch.manual_seed(20)
+        ut = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device) if self.balance else torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
+        st = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device) if self.balance else torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
 
-        # Bound values of the neuron parameters to plausible ranges
-        alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
+        v_thresh = self.v_thresh.to(device)
+        
+        if self.fix_tau_rec:
+            alpha = self.alpha
+            beta = self.h
+        else:
+            alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
+            beta = 1-alpha
+            if self.setting in ["S4", "S5"]:
+                beta = (1-alpha) / self.lambda_v
 
         # Set diagonal elements of recurrent matrix to zero
-        V = self.V.weight.clone().fill_diagonal_(0)
+        if self.fix_w_rec:
+            V = self.V
+        else:
+            V = self.V.clone().fill_diagonal_(0)
+            
+        #print("Alpha:", alpha[:10])
+        #print("Beta:", beta[:10])
+        #print("V:", V.data[:10, :10])
 
         # Loop over time axis
-        for t in range(Wx.shape[1]):
+        for t in range(sim_time):            
             # Compute and save membrane potential (RLIF)
-            ut = alpha * (ut - st) + (1 - alpha) * (Wx[:, t, :] + torch.matmul(st, V))
+            ut = alpha * (ut - (st if not self.fix_w_rec else 0)) + beta * (Wx[:, t, :] + torch.matmul(st, V))
 
             # Compute spikes with surrogate gradient
-            st = self.spike_fct(ut - self.threshold)
+            st = self.spike_fct(ut.clone(), v_thresh)
+            if self.balance and not self.setting in ["S1", "S2", "S5"]:
+                st = st / self.h
+                            
+            #if (t >= 0 and t <= 20) or(t >= sim_time-10):
+            #    print("t=", t, ":", np.where(st.data.cpu().numpy() > 0)[1])
+            #    print("\tut: ", ut[0, [76, 83]].data.tolist())
 
             # Track neuron state and activity
             self.v[:, t, :] = ut.detach()
             s[:, t, :] = st
+            
             if self.track_balance:
                 with torch.no_grad():
                     i_fast_inh, i_fast_exc = self._signed_matmul(st, V) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
@@ -773,30 +776,53 @@ class ReadoutLayer(nn.Module):
         input_size,
         hidden_size,
         args,
-        euler=False,
-        weight_init=None
+        init_weight=None
     ):
         super().__init__()
 
         # Fixed parameters
-        self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
+        ref_param = np.log(1-args.h*args.lambda_d)
+        self.alpha_lim = [np.exp(ref_param*10), np.exp(ref_param/10)] if args.balance and not args.balance_setting in ["S1", "S3"] else [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.h = args.h
         self.lambda_d = args.lambda_d
-        self.euler = euler
+        self.balance = args.balance
+        self.t_crop = args.t_crop
+        self.fix_w_out = args.fix_w_out
+        self.fix_tau_out = args.fix_tau_out
+        
+        self.setting = args.balance_setting
 
         # Trainable parameters
-        self.W = nn.Linear(input_size, hidden_size, bias=False)
-        if weight_init is not None:
-            self.W.weight.data = weight_init
+        if self.fix_w_out:
+            self.register_buffer("W", torch.Tensor(hidden_size, input_size))
+        else:
+            self.W = nn.Parameter(torch.Tensor(hidden_size, input_size))
+        
+        if init_weight is not None:
+            self.W.data = init_weight
+        else:
+            #torch.manual_seed(20)
+            nn.init.uniform_(self.W, -np.sqrt(1/input_size), np.sqrt(1/input_size))
 
-        if self.euler:
-            self.alpha = (1-self.h*self.lambda_d)
-            self.beta = self.h
+        if self.fix_tau_out:
+            self.register_buffer("alpha", torch.Tensor(hidden_size))
         else:
             self.alpha = nn.Parameter(torch.Tensor(hidden_size))
-            nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
 
-            self.beta = 1 - self.alpha
+        if self.balance:
+            nn.init.constant_(self.alpha, 1-self.h*self.lambda_d)
+            if args.auto_encoder and args.balance_ae_setting == "S1":
+                self.alpha.data = nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
+            elif args.auto_encoder and args.balance_ae_setting == "S2":
+                self.alpha.data = nn.init.constant_(self.alpha, args.ae_fac * (1-self.h*self.lambda_d))
+        else:
+            #torch.manual_seed(20)
+            nn.init.uniform_(self.alpha, self.alpha_lim[0], self.alpha_lim[1])
+        
+        print("Readout Layer Initialization Information:")
+        print("Alpha | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.alpha.min(), self.alpha.max(), self.alpha.mean()))
+        print("W     | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.W.data.min(), self.W.data.max(), self.W.data.mean()))
+        
 
         # Initialize normalization
         self.normalize = False
@@ -813,7 +839,7 @@ class ReadoutLayer(nn.Module):
     def forward(self, x):
 
         # Feed-forward affine transformations (all steps in parallel)
-        Wx = self.W(x)
+        Wx = torch.matmul(x, self.W.t())
 
         # Apply normalization
         if self.normalize:
@@ -829,26 +855,31 @@ class ReadoutLayer(nn.Module):
 
         # Initializations
         device = Wx.device
+        #torch.manual_seed(20)
         ut = torch.rand(Wx.shape[0], Wx.shape[2]).to(device)
         out = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device)
 
         # Bound values of the neuron parameters to plausible ranges
-        if not self.euler:
-            alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
-
-            # Loop over time axis
-            for t in range(Wx.shape[1]):
-                # Compute potential (LI)
-                ut = alpha * ut + (1-alpha) * Wx[:, t, :]
-                out = out + F.softmax(ut, dim=1)
-        else:
+        if self.fix_tau_out:
             alpha = self.alpha
-            beta = self.beta
+            beta = self.h
+        else:
+            alpha = torch.clamp(self.alpha, min=self.alpha_lim[0], max=self.alpha_lim[1])
+            beta = 1-alpha
+            if self.setting in ["S4", "S5"]:
+                beta = (1-alpha) / self.lambda_d
 
-            # Loop over time axis
-            for t in range(Wx.shape[1]):
-                # Compute potential (LI)
-                ut = alpha * ut + beta * Wx[:, t, :]
+        #print("Alpha:", alpha)
+        #print("Beta:", beta)
+        #print("W", self.W[:,:10])
+        # Loop over time axis
+        for t in range(Wx.shape[1]):
+            # Compute potential (LI)
+            ut = alpha * ut + beta * Wx[:, t, :]
+            #if t<50 or t > Wx.shape[1] - 10:
+            #    print("Wx[t]", Wx[0, t])
+            #    print("t=", t, ":", ut[0].data.cpu().tolist())
+            if t >= self.t_crop:
                 out = out + F.softmax(ut, dim=1)
 
         return out

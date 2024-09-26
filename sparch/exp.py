@@ -20,6 +20,8 @@ from datetime import timedelta
 import random
 import gc
 import inspect
+import warnings
+import tqdm
 
 import numpy as np
 import torch
@@ -44,6 +46,19 @@ class Experiment:
     """
 
     def __init__(self, args):
+        
+        if args.auto_encoder:
+            if not args.fix_w_in or not args.fix_w_out or \
+                not args.fix_w_rec or not args.fix_tau_out or not args.fix_tau_rec:
+                    
+                warnings.warn("Auto-encoder does not support learnable time constants or input/output/recurrent weights. Overwriting to False.")
+            
+            args.fix_w_in = True
+            args.fix_w_out = True
+            args.fix_w_rec = True
+            args.fix_tau_out = True
+            args.fix_tau_rec = True
+        
 
         # Unpack args into member variables
         for key, value in vars(args).items():
@@ -83,7 +98,8 @@ class Experiment:
         logging.info(f"\nDevice is set to {self.device}\n")
 
         # Initialize dataloaders and model
-        self.train_loader, self.valid_loader, self.test_loader, self.n_inputs, self.n_outputs = self.init_dataset()
+        self.train_loader, self.valid_loader, self.test_loader, self.n_inputs, self.n_outputs, t_crop = self.init_dataset()
+        args.t_crop = t_crop
         if self.auto_encoder:
             self.n_outputs = self.n_inputs
         self.init_model(args)
@@ -122,11 +138,15 @@ class Experiment:
 
             # Loop over epochs (training + validation)
             train_accs, train_frs, validation_accs, validation_frs = [], [], [], []
+            if self.track_balance:
+                train_balances, valid_balances = [], []
             logging.info("\n------ Begin training ------\n")
 
             for e in range(best_epoch + 1, best_epoch + self.n_epochs + 1):
                 train_acc, train_fr = self.train_one_epoch(e)
+                train_balances.append(self.balance_val)
                 valid_acc, valid_fr = self.valid_one_epoch(e, self.valid_loader, test=False)
+                valid_balances.append(self.balance_val)
                 self.scheduler.step(valid_acc) # Update learning rate
 
                 # Update best epoch and accuracy
@@ -137,7 +157,7 @@ class Experiment:
                     # Save best model
                     if self.save_best:
                         torch.save(self.net, f"{self.checkpoint_dir}/best_model.pth")
-                        logging.info(f"\nBest model saved with valid acc={valid_acc}")
+                        logging.info(f"\nBest model saved with valid acc={valid_acc}" + (f" and balance={valid_balances[-1]}" if self.track_balance else ""))
 
                 train_accs.append(train_acc)
                 train_frs.append(train_fr)
@@ -176,8 +196,10 @@ class Experiment:
         results = {}
         results["train_accs"] = train_accs
         results["train_frs"] = train_frs
+        results["train_balances"] = train_balances
         results["validation_accs"] = validation_accs
         results["validation_frs"] = validation_frs
+        results["validation_balances"] = valid_balances
         results["test_acc"] = test_acc
         results["test_fr"] = test_acc
         results["best_acc"] = best_acc
@@ -370,9 +392,14 @@ class Experiment:
                 num_workers=0,
                 pin_memory=True,
             )
+            
+        if hasattr(trainset, "t_crop"):
+            t_crop = trainset.t_crop
+        else:
+            t_crop = 0
 
         logging.info(f"Sample sizes: Training set = {len(trainset)}; validation set = {len(valset)}; test set = {len(testset)}")
-        return train_loader, val_loader, test_loader, trainset.n_units, trainset.n_classes
+        return train_loader, val_loader, test_loader, trainset.n_units, trainset.n_classes, t_crop
 
     def init_model(self, args):
         """
@@ -393,7 +420,7 @@ class Experiment:
         self.n_params = sum(p.numel() for p in self.net.parameters() if p.requires_grad)
         self.input_shape = args.input_shape
         self.layer_sizes = args.layer_sizes
-        logging.info(f"Model {self.net } has {self.n_params} trainable parameters")
+        logging.info(f"Model {self.net } has {self.n_params - (1 if self.auto_encoder else 0)} trainable parameters")
 
     def train_one_epoch(self, e):
         """
@@ -404,8 +431,11 @@ class Experiment:
         start = time.time()
         self.net.train()
         losses, accs = [], []
+        if self.track_balance:
+            balances = []
         epoch_spike_rate = 0
 
+        pbar = tqdm.tqdm(total = len(self.train_loader), desc="Training")
         # Loop over batches from train set
         for step, (x, _, y) in enumerate(self.train_loader):
 
@@ -415,6 +445,9 @@ class Experiment:
 
             # Forward pass through network
             output, firing_rates = self.net(x)
+            
+            if self.track_balance:
+                balances.append(self.net.balance_val)
 
             # Compute loss
             loss_val = self.loss_fn(output, y)
@@ -444,6 +477,10 @@ class Experiment:
             if self.plot and (e-1) % self.plot_epoch_freq == 0 and label in self.plot_classes and self.plot_class_cnt[label] < self.plot_class_cnt_max:
                 self.net.plot(self.plot_dir+f"epoch{e}_class{label}_{self.plot_class_cnt[label]}.png")
                 self.plot_class_cnt[label]+=1
+                
+            pbar.update(1)
+            
+        pbar.close()
 
         # Learning rate of whole epoch
         current_lr = self.opt.param_groups[-1]["lr"]
@@ -461,6 +498,10 @@ class Experiment:
         if self.net.__class__.__name__ == "SNN":
             epoch_spike_rate /= step
             logging.info(f"Epoch {e}: Train mean act rate={epoch_spike_rate}")
+        
+        if self.track_balance:
+            self.balance_val = np.mean(balances)
+            logging.info(f"Epoch {e}: Train balance={self.balance_val}")
 
         end = time.time()
         elapsed = str(timedelta(seconds=end - start))
@@ -478,7 +519,11 @@ class Experiment:
 
             self.net.eval()
             losses, accs = [], []
+            if self.track_balance:
+                balances = []
             epoch_spike_rate = 0
+            
+            pbar = tqdm.tqdm(total = len(dataloader), desc="Validation")
 
             # Loop over batches from validation set
             for step, (x, _, y) in enumerate(dataloader):
@@ -489,6 +534,9 @@ class Experiment:
 
                 # Forward pass through network
                 output, firing_rates = self.net(x)
+                
+                if self.track_balance:
+                    balances.append(self.net.balance_val)
 
                 # Compute loss
                 loss_val = self.loss_fn(output, y)
@@ -502,15 +550,23 @@ class Experiment:
                 # Spike activity
                 if self.net.__class__.__name__ == "SNN":
                     epoch_spike_rate += torch.mean(firing_rates)
+                    
+                pbar.update(1)
+                    
+            pbar.close()
 
             # Validation loss of whole epoch
             mean_acc = np.mean(accs)
             if test:
                 logging.info(f"Test loss={np.mean(losses)}")
                 logging.info(f"Test acc={mean_acc}")
+                if self.track_balance:
+                    logging.info(f"Test balance={np.mean(balances)}")
             else:
                 logging.info(f"Epoch {e}: Valid loss={np.mean(losses)}")
                 logging.info(f"Epoch {e}: Valid acc={mean_acc}")
+                if self.track_balance:
+                    logging.info(f"Epoch {e}: Valid balance={np.mean(balances)}")
 
             # Validation spike activity of whole epoch
             if self.net.__class__.__name__ == "SNN":
@@ -519,5 +575,8 @@ class Experiment:
                     logging.info(f"Test mean act rate={epoch_spike_rate}")
                 else:
                     logging.info(f"Epoch {e}: valid mean act rate={epoch_spike_rate}")
+                    
+            if self.track_balance:
+                self.balance_val = np.mean(balances)
 
             return mean_acc, epoch_spike_rate
