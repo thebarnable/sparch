@@ -14,20 +14,16 @@ def parse_args(default=False):
   parser = argparse.ArgumentParser(description='Simulate spiking integrator')
   parser.add_argument('--n', type=int, default=400, help='Number of recurrent units')
   parser.add_argument('--j', type=int, default=1, help='Input dimension (if <1 and shd, use all shd dimensions)')
-  parser.add_argument('--h', type=int, default=0.0001, help='Simulaton time step (s)')
+  parser.add_argument('--alpha', type=float, default=0.9999, help='Neuron decay')
   parser.add_argument('--data', type=str, default="float", choices = ["float", "shd", "cue"], help="Dataset to use for training (float: random float inputs")
   parser.add_argument('--w-init', type=str, default='boerlin-fix', choices = ['boerlin-fix', 'boerlin-rand', 'rand', 'kaiming-normal', 'kaiming-uniform', 'custom'], help='Choice of the w-out initialization')
-  parser.add_argument('--lambda-d', type=float, default=10, help='Leak term of read out (Hz)')
-  parser.add_argument('--lambda-v', type=float, default=20, help='Leak term of membrane voltage (Hz)')
-  parser.add_argument('--sigma-v', type=float, default=0.001, help='Standard deviaton of noise injected each time step into membrane voltage v')
-  parser.add_argument('--lambda-s', type=float, default=0, help='Leak term of sensory integrator (Hz)')
-  parser.add_argument('--sigma-s', type=float, default=0.01, help='Standard deviaton of noise injected each time step into sensory input c')
-  parser.add_argument('--mu', type=float, default=0, help='Linear cost term (penalize high number of spikes)')
-  parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes)')
+  parser.add_argument('--sigma-v', type=float, default=0.00001, help='Standard deviaton of noise injected each time step into membrane voltage v (x0.01 compared to Boerlin)')
+  parser.add_argument('--sigma-s', type=float, default=100, help='Standard deviaton of noise injected each time step into sensory input c (x10000 compared to Boerlin)')
+  parser.add_argument('--mu', type=float, default=0, help='Linear cost term (penalize high number of spikes) (x100 compared to Boerlin)')
+  parser.add_argument('--nu', type=float, default=0, help='Quadratic cost term (penalize non-equally distributed spikes) (x10 compared to Boerlin)')
   parser.add_argument('--v-rest', type=float, default=0, help='Resting voltage')
   parser.add_argument('--v-thresh', type=float, default=0.5, help='Threshold voltage')
   parser.add_argument('--input-scale', type=float, default=200, help='Scale input spikes with this factor')
-  parser.add_argument('--weight-scale', type=float, default=0.1, help='Scale weights with this factor')
   parser.add_argument('--weight-sparsity', type=float, default=0.3, help='Sparsity of weights (0.3 means 30 percent of weights are 0)')
   parser.add_argument('--repeat', type=int, default=100, help='For spike-based datasets, how many times to repeat each spike')
   parser.add_argument('--seed', type=int, default=0, help='Random seed (if -1: use default seed (system time I think?))')
@@ -57,14 +53,12 @@ def main(args, trial = None):
   # define constants for leaky integrator example & unpack args for convenience
   N = args.n
   J = args.j
-  h = args.h
-  lambda_d = args.lambda_d
-  lambda_v = args.lambda_v
   sigma_v = args.sigma_v
-  lambda_s = args.lambda_s
   sigma_s = args.sigma_s
   mu = args.mu
   nu = args.nu
+
+  alpha = args.alpha
   
   ## define and solve LDS
   # define LDS of form: ẋ = Ax + c(t)
@@ -109,28 +103,24 @@ def main(args, trial = None):
   # solve LDS with forward Euler and exact solution
   c = np.zeros([t, J])
   x = np.zeros([t, J])
-  if args.auto_encoder:
-    A = -lambda_d*np.ones(J)
-  else:
-    A = -lambda_s * np.ones(J)
 
   for k in tqdm(range(t-1), desc="# Euler Integration"):
-    c[k] = c_orig[k] + sigma_s * np.random.randn(*c_orig[k].shape) * (1/h)
-    x[k+1] = (1+h*A)*x[k] + h*c[k]  # explicit euler
+    c[k] = c_orig[k] + sigma_s * np.random.randn(*c_orig[k].shape)
+    x[k+1] = alpha*x[k] + (1-alpha)*c[k]  # explicit euler
 
   ## define and solve EBN with forward Euler
   print("")
   print("# Weight initialization")
   w_out = np.zeros([J, N])  # relation to paper: output kernel Γ_i = w_out_i = w_out[:, i]
   if args.w_init == 'boerlin-fix':
-    w_out[:,0:int(w_out.shape[1]/2)] = 0.1
-    w_out[:,int(w_out.shape[1]/2):int(w_out.shape[1])] = -0.1
+    w_out[:,0:int(w_out.shape[1]/2)] = (1-alpha)/0.001
+    w_out[:,int(w_out.shape[1]/2):int(w_out.shape[1])] = -(1-alpha)/0.001 
   elif args.w_init == 'boerlin-rand':
     n=int(w_out.shape[1]/2)
     w_out[:,0:n] = np.random.binomial(1, 0.7, size=(J,n)) * np.random.uniform(0.06, 0.1, size=(J, n))
     w_out[:,n:int(w_out.shape[1])] = np.random.binomial(1, 0.7, size=(J,int(w_out.shape[1])-n)) * np.random.uniform(-0.1, -0.06, size=(J,int(w_out.shape[1])-n))
   elif args.w_init == 'rand':
-    w_out = np.random.binomial(1, 1-args.weight_sparsity, size=(J,N)) * np.random.uniform(-args.weight_scale, args.weight_scale, size=(J, N))
+    w_out = np.random.binomial(1, 1-args.weight_sparsity, size=(J,N)) * np.random.uniform(-(1-alpha)/0.001, (1-alpha)/0.001, size=(J, N))
   elif args.w_init == 'kaiming-normal':
     w_out = np.random.normal(0, 1, size=(J, N)) * np.sqrt(2)/np.sqrt(w_out.shape[1])
   elif args.w_init == 'kaiming-uniform':
@@ -140,14 +130,18 @@ def main(args, trial = None):
     w_out[0, 5:10] = -0.1
 
   # set other weights
-  w_in   = w_out.T                                          # NxJ
-  w_fast = w_out.T @ w_out + mu * (lambda_d**2) * np.eye(N) # NxN
-  w_slow = w_out.T @ (A + lambda_d*np.eye(J)) @ w_out       # NxN
+  w_in   = w_out.T.copy()                                  # NxJ
+  w_fast = w_out.T @ w_out + mu * np.eye(N) # NxN
+  w_slow = w_out.T @ (-10*np.ones(J) + 10*np.eye(J)) @ w_out       # NxN
 
-  v_thresh = 0.5*(nu * lambda_d + mu * lambda_d**2 + np.diagonal(w_fast)) # np.linalg.norm(w_out,axis=0)
+  v_thresh = 0.5*(nu + mu + np.diagonal(w_fast)) # np.linalg.norm(w_out,axis=0)
   v_rest = np.full(N, args.v_rest, dtype=float)
 
   w_fast = -w_fast
+
+  w_fast /= (1-alpha)
+  w_slow /= (1-alpha)
+  w_out /= (1-alpha)
   if args.track_balance:
     w_fast_neg = np.where(w_fast<0, w_fast, 0)
     w_fast_pos = np.where(w_fast>=0, w_fast, 0)
@@ -206,19 +200,19 @@ def main(args, trial = None):
       i_in[k]   = np.matmul(w_in, c[k])
 
     # update membrane voltage
-    v[k+1] = (1-h*lambda_v) * v[k] + h * (lambda_v * v_rest + i_in[k] + i_slow[k] + i_fast[k]) + sigma_v * np.random.randn(*v[k].shape) * np.sqrt(h)
+    v[k+1] = alpha * v[k] + (1-alpha)*(i_in[k] + i_slow[k] + i_fast[k]) + sigma_v * np.random.randn(*v[k].shape)
 
     # update rate
-    r[k+1] = (1-h*lambda_d) * r[k] + h*o[k]
+    r[k+1] = alpha * r[k] + o[k]
 
     # update output
-    x_snn[k+1] = (1-h*lambda_d) * x_snn[k] + h*np.matmul(w_out,o[k]) #np.matmul(w_out, r[k+1])
+    x_snn[k+1] = alpha * x_snn[k] + (1-alpha)*np.matmul(w_out,o[k]) #np.matmul(w_out, r[k+1])
 
     # spikes
     spike_ids = np.asarray(np.argwhere(v[k+1] > v_thresh))
     if len(spike_ids) > 0:
       spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
-      o[k+1][spike_id] = 1/h
+      o[k+1][spike_id] = 1
 
     if trial is not None and k%100==0:
       trial.report(np.mean((x-x_snn)**2), k)
