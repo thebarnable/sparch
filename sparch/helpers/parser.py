@@ -309,13 +309,13 @@ def add_training_options(parser):
         type=str, 
         default="NONE", 
         help="Balance setting",
-        choices=["S1", "S2", "S3", "S4", "S5"]
+        choices=["NONE", "S1", "S2", "S3", "S4", "S5"]
     )
     parser.add_argument(
         "--balance-ae-setting", 
         type=str, 
         default="NONE", 
         help="Balance setting for autoencoder",
-        choices=["S1", "S2"]
+        choices=["NONE", "S1", "S2"]
     )
     return parser
