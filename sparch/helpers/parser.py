@@ -97,28 +97,10 @@ def add_model_options(parser):
         help="If True, network will be initialized as an auto-encoder.",
     )    
     parser.add_argument(
-        "--lambda-v",
+        "--alpha-init",
         type=float,
-        default=20,
-        help="Leak term of membrane voltage (Hz)"
-    )
-    parser.add_argument(
-        "--lambda-d",
-        type=float,
-        default=10,
-        help="Leak term of read out (Hz)"
-    )
-    parser.add_argument(
-        "--sigma-v",
-        type=float,
-        default=0.001,
-        help="Standard deviaton of noise injected each time step into membrane voltage v"
-    )
-    parser.add_argument(
-        "--h",
-        type=float,
-        default=0.0001,
-        help="Simulaton time step (s)"
+        default=0.9999,
+        help="Leaky integration factor.",
     )
     parser.add_argument(
         "--mu",
@@ -131,6 +113,18 @@ def add_model_options(parser):
         type=float,
         default=0.0,
         help="Quadratic cost term (penalize non-equally distributed spikes)"
+    )
+    parser.add_argument(
+        "--V-scale",
+        type=float,
+        default=1.0,
+        help="Scaling factor for the recurrent weights."
+    )
+    parser.add_argument(
+        "--balance-refit",
+        action='store_true',
+        default=False,
+        help="Should the weights/threshold be refit after each epoch according to balance theory?"
     )
     return parser
 
@@ -303,19 +297,5 @@ def add_training_options(parser):
         type=int,
         default=1,
         help="How many times to repeat each spike"
-    )
-    parser.add_argument(
-        "--balance-setting", 
-        type=str, 
-        default="NONE", 
-        help="Balance setting",
-        choices=["NONE", "S1", "S2", "S3", "S4", "S5"]
-    )
-    parser.add_argument(
-        "--balance-ae-setting", 
-        type=str, 
-        default="NONE", 
-        help="Balance setting for autoencoder",
-        choices=["NONE", "S1", "S2"]
     )
     return parser

@@ -21,7 +21,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
     LAYER = 0
     BATCH = 0
     NEURON = 0
-    NEURONS_TO_PLOT=[121]
+    NEURONS_TO_PLOT=[50]
     N_NEURONS_TO_PLOT=len(NEURONS_TO_PLOT)
 
     # cast data lists to torch tensors
