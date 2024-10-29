@@ -588,13 +588,15 @@ class RLIFLayer(nn.Module):
         return torch.mm(A, torch.where(B<0, B, 0)), torch.mm(A, torch.where(B>=0, B, 0))
     
     def refit(self):
+        device = self.V.device
+        
         if self.fix_w_in and not self.fix_w_rec:
             self.v_thresh = 0.5*(self.nu + self.mu + torch.diagonal(self.V.data))
         if not self.fix_w_in and self.fix_w_rec:
             self.v_thresh = 0.5*(self.nu + 2 * self.mu + torch.diagonal(self.W.data @ self.W.data.T))
-            self.V.data = self.W @ self.W.T + self.mu * torch.eye(self.hidden_size)
+            self.V.data = self.W @ self.W.T + self.mu * torch.eye(self.hidden_size).to(device)
         if not self.fix_w_in and not self.fix_w_rec:
-            self.V.data = 0.5 * ((self.W @ self.W.T + self.mu * torch.eye(self.hidden_size)) + self.V.data) 
+            self.V.data = 0.5 * ((self.W @ self.W.T + self.mu * torch.eye(self.hidden_size).to(device)) + self.V.data) 
             self.v_thresh = 0.5*(self.nu + self.mu + torch.diagonal(self.V.data))
 
 

@@ -460,7 +460,7 @@ class Experiment:
             
             if self.track_balance:
                 balances.append(self.net.balance_val)
-                firing_rates_arr.append(torch.mean(firing_rates))
+                firing_rates_arr.append(torch.mean(firing_rates).detach().cpu().numpy())
 
             # Compute loss
             loss_val = self.loss_fn(output, y)

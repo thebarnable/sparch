@@ -34,10 +34,13 @@ def exp():
 
     # Get experiment configuration from parser
     args = parse_args()
+    
+    new_exp_folder = args.new_exp_folder
 
     for i in range(args.trials):
         if args.trials > 1:
             args.seed = i
+            args.new_exp_folder = os.path.join(new_exp_folder, f"trial_{i}")
 
         # Instantiate class for the desired experiment
         experiment = Experiment(args)
