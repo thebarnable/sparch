@@ -6,18 +6,19 @@ class SpikeFunctionBoxcar(torch.autograd.Function):
     box-car function similar to DECOLLE, Kaiser et al. (2020).
     """
     @staticmethod
-    def forward(ctx, x):
+    def forward(ctx, x, v_thresh=0):
         ctx.save_for_backward(x)
+        ctx.v_thresh=v_thresh
 
-        return x.gt(0).float()
+        return x.gt(v_thresh).float()
 
     @staticmethod
     def backward(ctx, grad_spikes):
         (x,) = ctx.saved_tensors
         grad_x = grad_spikes.clone()
-        grad_x[x <= -0.5] = 0
-        grad_x[x > 0.5] = 0
-        return grad_x
+        grad_x[x <= ctx.v_thresh-0.5] = 0
+        grad_x[x > ctx.v_thresh+0.5] = 0
+        return grad_x, None
     
 class SingleSpikeFunctionBoxcarMax(torch.autograd.Function):
     """

@@ -475,7 +475,7 @@ class RLIFLayer(nn.Module):
             nn.init.orthogonal_(self.V)
             nn.init.uniform_(self.W, -np.sqrt(1/input_size), np.sqrt(1/input_size))
             
-            self.v_thresh = torch.tensor([1.0])
+            self.v_thresh = torch.full((hidden_size,), 1.0)
             
         print("Recurrent Layer Initialization Information:")
         print("v_thresh | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.v_thresh.min(), self.v_thresh.max(), self.v_thresh.mean()))
