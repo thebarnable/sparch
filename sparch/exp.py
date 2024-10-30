@@ -150,9 +150,11 @@ class Experiment:
 
             for e in range(best_epoch + 1, best_epoch + self.n_epochs + 1):
                 train_acc, train_fr = self.train_one_epoch(e)
-                train_balances.append(self.balance_val)
+                if self.track_balance:
+                    train_balances.append(self.balance_val)
                 valid_acc, valid_fr = self.valid_one_epoch(e, self.valid_loader, test=False)
-                valid_balances.append(self.balance_val)
+                if self.track_balance:
+                    valid_balances.append(self.balance_val)
                 self.scheduler.step(valid_acc) # Update learning rate
                 if self.balance_refit:
                     print("Refitting network according to balance theory.")
