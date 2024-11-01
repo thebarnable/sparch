@@ -6,6 +6,7 @@ import shutil
 import logging
 import tqdm
 import numpy as np
+import sys
 
 from sparch.exp import Experiment
 from sparch.helpers.parser import add_model_options
@@ -201,6 +202,9 @@ def run_sample():
     print("Actual: ", label)
     
 if __name__ == '__main__':
-    exp()
-    #run_sample()
-    #run_balanced_ae_samples(N=5)
+    # start regular experiments via `python main.py [args]`
+    # start specific functions above via `python main.py <function-name>`, e.g. `python main.py run_sample`
+    if len(sys.argv) > 1 and sys.argv[1] in locals():
+        locals()[sys.argv.pop(1)]()
+    else:
+        exp()
