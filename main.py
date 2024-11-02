@@ -50,6 +50,45 @@ def exp():
         logging.info(f"\n-------- Trial {i+1}/{args.trials} --------\n")
         experiment.forward()
 
+def run_unbalanced_ae_sample():
+    if os.path.exists(RESULTS_FOLDER) and os.path.isdir(RESULTS_FOLDER):
+        shutil.rmtree(RESULTS_FOLDER)
+
+    parser = argparse.ArgumentParser(description="Model training on spiking speech commands datasets.")
+    parser = add_model_options(parser)
+    parser = add_training_options(parser)
+    args = parser.parse_args()
+    args.seed = 0
+    args.new_exp_folder = RESULTS_FOLDER
+    args.model = "RLIF"
+    args.dataset = "cue"
+    args.n_layers = 1
+    args.neurons = 400
+    args.dropout = 0
+    args.normalization = "none"
+    args.track_balance = True
+    args.repeat = 20
+    args.plot = True
+    args.batch_size = 1
+    args.auto_encoder = True
+    args.single_spike = True
+    args.sigma_v = 0.0
+    args.dataset_scale = 200
+    args.bidirectional = False
+    args.balance = False
+    args.fix_w_in = True
+    args.fix_w_rec = True
+    args.fix_w_out = True
+    args.fix_tau_rec = True
+    args.fix_tau_out = True
+    exp = Experiment(args)
+
+    data, _ = next(iter(exp.train_loader))
+    data = data.to(exp.device)
+    exp.net(data)
+    print("Balance: ", exp.net.balance_val)
+    exp.net.plot(RESULTS_FOLDER+"/plots/plot.png", show=True)
+
 def run_balanced_ae_sample():
     if os.path.exists(RESULTS_FOLDER) and os.path.isdir(RESULTS_FOLDER):
         shutil.rmtree(RESULTS_FOLDER)
@@ -155,6 +194,53 @@ def run_balanced_ae_samples(N=5):
     # Plot last sample
     #exp.net.plot(RESULTS_FOLDER+"/plots/plot.png", show=True)
 
+def run_balanced_sample():
+    if os.path.exists(RESULTS_FOLDER) and os.path.isdir(RESULTS_FOLDER):
+        shutil.rmtree(RESULTS_FOLDER)
+
+    parser = argparse.ArgumentParser(description="Model training on spiking speech commands datasets.")
+    parser = add_model_options(parser)
+    parser = add_training_options(parser)
+    args = parser.parse_args()
+    args.seed = 0
+    args.new_exp_folder = RESULTS_FOLDER
+    args.model = "RLIF"
+    args.dataset = "cue"
+    args.n_layers = 1
+    args.neurons = 400
+    args.dropout = 0
+    args.normalization = "none"
+    args.track_balance = True
+    args.repeat = 20
+    args.plot = True
+    args.batch_size = 1
+    args.auto_encoder = False
+    args.single_spike = True
+    args.sigma_v = 0.0
+    args.dataset_scale = 200
+    args.bidirectional = False
+    args.balance = True
+    args.fix_w_in = False
+    args.fix_w_rec = True
+    args.fix_w_out = False
+    args.fix_tau_rec = False
+    args.fix_tau_out = False
+    exp = Experiment(args)
+    
+    data, _, label = next(iter(exp.train_loader))
+    data, label = data.to(exp.device), label.to(exp.device)
+    output, _ = exp.net(data)
+    print("Balance: ", exp.net.balance_val)
+    #exp.net.plot(RESULTS_FOLDER+"/plots/plot.png")
+
+    pred = torch.argmax(output, dim=1)
+    acc = torch.mean((label==pred).float())
+    print("Output: ", output)
+    print("Accuracy: ", acc.item())
+    print("Predicted: ", pred)
+    print("Actual: ", label)
+    exp.net.plot(RESULTS_FOLDER+"/plots/plot.png", show=True)
+
 def run_sample():
     if os.path.exists(RESULTS_FOLDER) and os.path.isdir(RESULTS_FOLDER):
         shutil.rmtree(RESULTS_FOLDER)
@@ -200,6 +286,7 @@ def run_sample():
     print("Accuracy: ", acc.item())
     print("Predicted: ", pred)
     print("Actual: ", label)
+    exp.net.plot(RESULTS_FOLDER+"/plots/plot.png", show=True)
     
 if __name__ == '__main__':
     # start regular experiments via `python main.py [args]`

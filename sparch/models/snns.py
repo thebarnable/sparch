@@ -51,8 +51,8 @@ class SNN(nn.Module):
 
         # Check params
         if args.auto_encoder:
-            if args.n_layers != 1 or not args.balance:
-                raise ValueError("Auto-encoder requires a single balanced RLIF layer.")
+            if args.n_layers != 1:
+                raise ValueError("Auto-encoder requires a single RLIF layer.")
             
         if args.balance and args.model != "RLIF":
             raise ValueError("Balance is only available for RLIF model yet.")
