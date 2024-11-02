@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import os
+import scipy
 from scipy.signal import butter, filtfilt
 
 BALANCE_EPS=0.005  # = mean dist between i_exc and -i_inh
@@ -45,7 +46,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
     # create plots
     plt.rc('xtick', labelsize=8) #fontsize of the x tick labels
     plt.rc('ytick', labelsize=8) #fontsize of the y tick labels
-    fig, axs = plt.subplots(2+N_NEURONS_TO_PLOT*2, 1, sharex=True, gridspec_kw={'height_ratios': [3] + 2*N_NEURONS_TO_PLOT*[5] + [5]}, figsize=(30,15))
+    fig, axs = plt.subplots(2+N_NEURONS_TO_PLOT*3, 1, sharex=True, gridspec_kw={'height_ratios': [3] + 3*N_NEURONS_TO_PLOT*[5] + [5]}, figsize=(30,15))
     fig.subplots_adjust(hspace=0)
 
     # plot
@@ -65,27 +66,59 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
 
     ## plot rest
     if balance:
-        for i in range(1, 1+2*N_NEURONS_TO_PLOT, 2):
+        currents_exc = currents_exc[LAYER].cpu()
+        currents_inh = currents_inh[LAYER].cpu()
+        balance_arr = np.array([[np.corrcoef(currents_exc[b, :,  d], currents_inh[b, :, d])[0][1] for d in range(currents_exc.shape[2])] for b in range(currents_exc.shape[0])])
+        balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
+        balance_raw = -np.mean(balance_arr)
+        print(f"balance raw: {balance_raw}")
+
+        if lowpass:
+            b, a = butter(4, 0.05, btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
+            currents_exc_lp = np.array(filtfilt(b, a, currents_exc, axis=1))
+            currents_inh_lp = np.array(filtfilt(b, a, currents_inh, axis=1))
+
+        balance_arr = np.array([[np.corrcoef(currents_exc_lp[b, :,  d], currents_inh_lp[b, :, d])[0][1] for d in range(currents_exc_lp.shape[2])] for b in range(currents_exc_lp.shape[0])])
+        balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
+        balance_lp = -np.mean(balance_arr)
+        print(f"balance lp: {balance_lp}")
+
+        currents_exc_mf = scipy.signal.medfilt(currents_exc.numpy(), kernel_size=(1, 5, 1))
+        currents_inh_mf = scipy.signal.medfilt(currents_inh.numpy(), kernel_size=(1, 5, 1))
+        balance_arr = np.array([[np.corrcoef(currents_exc_mf[b, :,  d], currents_inh_mf[b, :, d])[0][1] for d in range(currents_exc_mf.shape[2])] for b in range(currents_exc_mf.shape[0])])
+        balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
+        balance_mf = -np.mean(balance_arr)
+        print(f"balance mf: {balance_mf}")
+
+        for i in range(1, 1+3*N_NEURONS_TO_PLOT, 3):
             neuron = NEURONS_TO_PLOT[int(i/2)]
-            currents_exc_i = currents_exc[LAYER, BATCH, :, neuron].cpu()
-            currents_inh_i = currents_inh[LAYER, BATCH, :, neuron].cpu()
+            # currents_exc_i = currents_exc[LAYER, BATCH, :, neuron].cpu()
+            # currents_inh_i = currents_inh[LAYER, BATCH, :, neuron].cpu()
             v = voltages[LAYER, BATCH, :, neuron].cpu()
-            if lowpass:
-                b, a = butter(4, 0.05, btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
-                currents_exc_i = np.array(filtfilt(b, a, currents_exc_i))
-                currents_inh_i = np.array(filtfilt(b, a, currents_inh_i))
-            axs[i].plot(t, currents_exc_i, color=BLUE, label="i_exc")
-            axs[i].plot(t, -currents_inh_i, color=RED, label="-i_inh")
-            axs[i+1].plot(t, v, color=GREY, label="v")
-            axs[i].set_title("neuron " + str(neuron), y=0.5)
+            
+            ####
+            # currents_exc_i_mf = median_exc[0, :, neuron]
+            # currents_inh_i_mf = median_inh[0, :, neuron]
+            ####
+
+            axs[i].plot(t, currents_exc[BATCH, :, neuron], color=BLUE, label="i_exc raw")
+            axs[i].plot(t, -currents_inh[BATCH, :, neuron], color=RED, label="-i_inh raw")
+            axs[i+1].plot(t, currents_exc_mf[BATCH, :, neuron], color=BLUE, label="i_exc median filtered")
+            axs[i+1].plot(t, -currents_inh_mf[BATCH, :, neuron], color=RED, label="-i_inh median filtered")
+            axs[i+2].plot(t, currents_exc_lp[BATCH, :, neuron], color=BLUE, label="i_exc lowpass filtered")
+            axs[i+2].plot(t, -currents_inh_lp[BATCH, :, neuron], color=RED, label="-i_inh lowpass filtered")
+            #axs[i+1].plot(t, v, color=GREY, label="v")
+            axs[i].set_title("balance raw: " + str(balance_raw), y=0.5)
+            axs[i+1].set_title("balance median filtered: " + str(balance_mf), y=0.5)
+            axs[i+2].set_title("balance lowpass filtered: " + str(balance_lp), y=0.5)
             if i==0:
                 axs[i].legend()
 
-    axs[1+2*N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=8)
-    axs[1+2*N_NEURONS_TO_PLOT].scatter(x_axis_2, y_axis_2, c=colors_2, marker = "o", s=8)
+    axs[1+3*N_NEURONS_TO_PLOT].scatter(x_axis, y_axis, c=colors, marker = "o", s=8)
+    axs[1+3*N_NEURONS_TO_PLOT].scatter(x_axis_2, y_axis_2, c=colors_2, marker = "o", s=8)
     yticks=list(range(neurons_min,neurons_max,neurons_ticks))
-    axs[1+2*N_NEURONS_TO_PLOT].set_yticks(yticks)
-    axs[1+2*N_NEURONS_TO_PLOT].set_yticklabels(yticks, fontsize=8)
+    axs[1+3*N_NEURONS_TO_PLOT].set_yticks(yticks)
+    axs[1+3*N_NEURONS_TO_PLOT].set_yticklabels(yticks, fontsize=8)
 
     plt.xlabel('Timesteps')
     if filename!="":
