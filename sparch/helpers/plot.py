@@ -70,7 +70,7 @@ def plot_network(inputs, spikes, layer_sizes, balance, currents_exc, currents_in
             currents_inh_i = currents_inh[LAYER, BATCH, :, neuron].cpu()
             v = voltages[LAYER, BATCH, :, neuron].cpu()
             if lowpass:
-                b, a = butter(4, 5/np.sqrt(currents_exc_i.shape[0]), btype='low', analog=False) # lowpass filter critical freq: empirically determined
+                b, a = butter(4, 0.5 if currents_exc.shape[1] < 1000 else 0.05, btype='low', analog=False) # lowpass filter critical freq: empirically determined
                 currents_exc_i = np.array(filtfilt(b, a, currents_exc_i))
                 currents_inh_i = np.array(filtfilt(b, a, currents_inh_i))
             axs[i].plot(t, currents_exc_i, color=BLUE, label="i_exc")

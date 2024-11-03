@@ -146,7 +146,7 @@ class SNN(nn.Module):
                 currents_exc = scipy.signal.medfilt(currents_exc.numpy(), kernel_size=(1, 5, 1))
                 currents_inh = scipy.signal.medfilt(currents_inh.numpy(), kernel_size=(1, 5, 1))
             elif self.balance_metric == "lowpass":
-                b, a = scipy.signal.butter(4, 5/np.sqrt(currents_exc.shape[1]), btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
+                b, a = scipy.signal.butter(4, 0.5 if currents_exc.shape[1] < 1000 else 0.05, btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
                 currents_exc = np.array(scipy.signal.filtfilt(b, a, currents_exc, axis=1))
                 currents_inh = np.array(scipy.signal.filtfilt(b, a, currents_inh, axis=1))
 
