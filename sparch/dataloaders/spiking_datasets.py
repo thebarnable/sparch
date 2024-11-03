@@ -130,7 +130,7 @@ class CueAccumulationDataset(Dataset):
         self.dt = 1e-3
         self.t_interval = 150
         self.seq_len = n_cues*self.t_interval + t_wait
-        self.t_crop = n_cues * self.t_interval
+        self.t_crop = n_cues * self.t_interval * repeat
         self.n_units = 40
         self.n_classes = 2    # This is a binary classification task, so using two output units with a softmax activation redundant
         n_channel = self.n_units // n_symbols
