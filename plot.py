@@ -65,8 +65,11 @@ def plot_results():
             print("Skipping",folder,"because not a directory")
             continue
         
-        dataset, neuron, n_layers, n_neurons, dropout, norm, st = params_from_file_name(folder)
-        print(f"Results for {n_layers} layers, {n_neurons} {neuron} neurons on {dataset} (dropout = {dropout}, norm = {norm}, {st}x repeated inputs)")
+        if not args.new_name:
+            dataset, neuron, n_layers, n_neurons, dropout, norm, st = params_from_file_name(folder)
+            print(f"Results for {n_layers} layers, {n_neurons} {neuron} neurons on {dataset} (dropout = {dropout}, norm = {norm}, {st}x repeated inputs)")
+        else:
+            print(f"Results for {folder}")
 
         validation_accs = []
         test_accs = []
@@ -109,6 +112,7 @@ if __name__ == '__main__':
     parser.add_argument('--save', action='store_true', help='Save plots')
     parser.add_argument('--score', default='validation_accs', help='Values to plot on x-axis (only used in some functions; can be anything from results.pth)')
     parser.add_argument('--function', default='', help='Plot function to call')
+    parser.add_argument('--new-name', action='store_true', help='Use new name for plots')
     args = parser.parse_args()
 
     PLOT=args.plot
