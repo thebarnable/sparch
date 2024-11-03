@@ -298,4 +298,11 @@ def add_training_options(parser):
         default=1,
         help="How many times to repeat each spike"
     )
+    parser.add_argument(
+        "--balance-metric",
+        type=str,
+        default="median",
+        choices=["median", "lowpass", "raw"],
+        help="The balance metric will be calculated on a median or lowpass filtered version of the neuronal input currents, or the raw ones"
+    )
     return parser

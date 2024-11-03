@@ -48,6 +48,7 @@ class SNN(nn.Module):
         self.use_readout_layer = True
         self.single_spike = args.single_spike
         self.track_balance = args.track_balance
+        self.balance_metric = args.balance_metric
 
         # Check params
         if args.auto_encoder:
@@ -139,12 +140,19 @@ class SNN(nn.Module):
         
         if self.track_balance:
             # Assume only one layer => [0]
-            median_exc = scipy.signal.medfilt(self.currents_exc[0].cpu().numpy(), kernel_size=(1, 5, 1))
-            median_inh = scipy.signal.medfilt(self.currents_inh[0].cpu().numpy(), kernel_size=(1, 5, 1))
-            balance_arr = np.array([[np.corrcoef(median_exc[b, :,  d], median_inh[b, :, d])[0][1] for d in range(median_exc.shape[2])] for b in range(median_exc.shape[0])])
+            currents_exc = self.currents_exc[0].cpu()
+            currents_inh = self.currents_inh[0].cpu()
+            if self.balance_metric == "median":
+                currents_exc = scipy.signal.medfilt(currents_exc.numpy(), kernel_size=(1, 5, 1))
+                currents_inh = scipy.signal.medfilt(currents_inh.numpy(), kernel_size=(1, 5, 1))
+            elif self.balance_metric == "lowpass":
+                b, a = scipy.signal.butter(4, 5/np.sqrt(currents_exc.shape[1]), btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
+                currents_exc = np.array(scipy.signal.filtfilt(b, a, currents_exc, axis=1))
+                currents_inh = np.array(scipy.signal.filtfilt(b, a, currents_inh, axis=1))
+
+            balance_arr = np.array([[np.corrcoef(currents_exc[b, :,  d], currents_inh[b, :, d])[0][1] for d in range(currents_exc.shape[2])] for b in range(currents_exc.shape[0])])
             balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
             balance = -np.mean(balance_arr)
-                
             self.balance_val = balance
 
         return x, firing_rates
