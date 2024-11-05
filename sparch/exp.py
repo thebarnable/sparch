@@ -22,6 +22,8 @@ import gc
 import inspect
 import warnings
 import tqdm
+import yaml
+import git
 
 import numpy as np
 import torch
@@ -123,6 +125,12 @@ class Experiment:
         self.loss_fn = nn.CrossEntropyLoss()
         
         self.balance_refit = args.balance_refit
+
+        # Save commit ID in args & save args as yaml file
+        repo = git.Repo(search_parent_directories=True)
+        args.commit = str(repo.head.commit)
+        with open(self.exp_folder+"/params.yml", "w") as f:
+            yaml.dump(args, f)
 
     def forward(self):
         """
