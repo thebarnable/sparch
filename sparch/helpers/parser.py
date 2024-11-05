@@ -121,10 +121,22 @@ def add_model_options(parser):
         help="Scaling factor for the recurrent weights."
     )
     parser.add_argument(
+        "--V-slow-scale",
+        type=float,
+        default=1.0,
+        help="Scaling factor for the slow recurrent weights."
+    )
+    parser.add_argument(
         "--balance-refit",
         action='store_true',
         default=False,
         help="Should the weights/threshold be refit after each epoch according to balance theory?"
+    )
+    parser.add_argument(
+        "--slow-dynamics",
+        action='store_true',
+        default=False,
+        help="If True, the network will add recurrent currents that use a filtered version of the spikes and new, trainable weights"
     )
     return parser
 

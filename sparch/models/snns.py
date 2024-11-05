@@ -446,6 +446,8 @@ class RLIFLayer(nn.Module):
         self.fix_w_rec = args.fix_w_rec
         self.fix_tau_rec = args.fix_tau_rec
         self.V_scale = args.V_scale
+        self.V_slow_scale = args.V_slow_scale
+        self.slow_dynamics = args.slow_dynamics
         
         self.alpha_init = args.alpha_init
         self.mu = args.mu
@@ -468,6 +470,15 @@ class RLIFLayer(nn.Module):
             self.register_buffer("alpha", torch.Tensor(hidden_size))
         else:
             self.alpha = nn.Parameter(torch.Tensor(hidden_size))
+
+        if self.slow_dynamics:
+            self.register_buffer("V_slow", torch.Tensor(hidden_size, hidden_size))
+            if self.fix_w_rec is False:
+                print("Warning: you are using slow dynamics but still train the fast weights V!")
+
+            nn.init.orthogonal_(self.V_slow)
+            self.V_slow *= self.V_slow_scale
+            self.V_slow.data.fill_diagonal_(0)
         
         if self.balance:
             alpha_scale = (1-self.alpha_init) / 0.001
@@ -490,6 +501,8 @@ class RLIFLayer(nn.Module):
         print("W        | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.W.data.min(), self.W.data.max(), self.W.data.mean()))
         print("V        | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.V.data.min(), self.V.data.max(), self.V.data.mean()))
         print("alpha    | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.alpha.min(), self.alpha.max(), self.alpha.mean()))
+        if self.slow_dynamics:
+            print("V_slow   | min: {:.5f}, max: {:.5f}, mean: {:.5f}".format(self.V_slow.data.min(), self.V_slow.data.max(), self.V_slow.data.mean()))
 
         # Initialize normalization
         self.normalize = False
@@ -555,6 +568,7 @@ class RLIFLayer(nn.Module):
         #torch.manual_seed(20)
         ut = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device)
         st = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device)
+        r = torch.zeros(Wx.shape[0], Wx.shape[2]).to(device)
         s = torch.zeros(Wx.shape[0], Wx.shape[1], Wx.shape[2]).to(device)
 
         v_thresh = self.v_thresh.to(device)
@@ -571,9 +585,10 @@ class RLIFLayer(nn.Module):
             V = self.V.clone().fill_diagonal_(0)
 
         # Loop over time axis
-        for t in range(sim_time):            
+        for t in range(sim_time):
             # Compute and save membrane potential (RLIF)
-            ut = alpha * (ut - (st if not self.fix_w_rec else 0)) + (1-alpha) * (Wx[:, t, :] + torch.matmul(st, V))
+            i_slow = torch.matmul(r, self.V_slow) if self.slow_dynamics else 0
+            ut = alpha * (ut - (st if not self.fix_w_rec else 0)) + (1-alpha) * (Wx[:, t, :] + torch.matmul(st, V) + i_slow)
 
             # Compute spikes with surrogate gradient
             st = self.spike_fct(ut.clone(), v_thresh)
@@ -581,12 +596,15 @@ class RLIFLayer(nn.Module):
             # Track neuron state and activity
             self.v[:, t, :] = ut.detach()
             s[:, t, :] = st
+
+            r = alpha * r + st
             
             if self.track_balance:
                 with torch.no_grad():
                     i_fast_inh, i_fast_exc = self._signed_matmul(st, V) # note: the resulting i_rec_exc/inh is equivalent to torch.matmul(st, V)
-                    self.I_inh[:, t, :] += i_fast_inh
-                    self.I_exc[:, t, :] += i_fast_exc
+                    i_slow_inh, i_slow_exc = self._signed_matmul(st, self.V_slow) if self.slow_dynamics else (0, 0)
+                    self.I_inh[:, t, :] += i_fast_inh + i_slow_inh
+                    self.I_exc[:, t, :] += i_fast_exc + i_slow_exc
         
         return s
 
