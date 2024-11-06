@@ -2,11 +2,11 @@
 
 ### example cluster options (refer to https://doc.itc.rwth-aachen.de/display/CC/Using+the+SLURM+Batch+System)
 #SBATCH --nodes=1
-#SBATCH --mem-per-cpu=4G
 #SBATCH --ntasks=1
-#SBATCH --job-name=ablation
-#SBATCH --output=ablation.%J.txt
-#SBATCH --time=8:00:00
+#SBATCH --mem-per-cpu=16G
+#SBATCH --job-name=baseline
+#SBATCH --output=baseline.%J.txt
+#SBATCH --time=72:00:00
 #SBATCH --gres=gpu:1
 
 ### custom setup for python experiments
@@ -14,46 +14,22 @@
 . $HOME/miniconda3/etc/profile.d/conda.sh
 export PATH=$HOME/miniconda3/bin:$PATH
 eval "$(conda shell.bash hook)"
-conda activate sparch
+conda activate beep
 
-cd $HOME/1_Projects/sparch
-
-gpu=1
+cd $HOME/Projects/sparch
 
 echo "TASK: $SLURM_ARRAY_TASK_ID"
-if [[ $SLURM_ARRAY_TASK_ID -eq 0 ]]; then # test run
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 2 --log true --trials 1 --n-layers 2
-elif [[ $SLURM_ARRAY_TASK_ID -eq 1 ]]; then # reference (3 layer, 128 neurons, RLIF)
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 30 --log true --trials 3 --n-layers 2
-elif [[ $SLURM_ARRAY_TASK_ID -eq 2 ]]; then # reference - dropout
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 30 --log true --trials 3 --n-layers 2  --dropout 0
-elif [[ $SLURM_ARRAY_TASK_ID -eq 3 ]]; then # reference - batchnorm
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 30 --log true --trials 3 --n-layers 2  --normalization none
-elif [[ $SLURM_ARRAY_TASK_ID -eq 4 ]]; then # reference - dropout - batchnorm
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 30 --log true --trials 3 --n-layers 2 --dropout 0 --normalization none  
-elif [[ $SLURM_ARRAY_TASK_ID -eq 5 ]]; then # reference @ 2 layers
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 30 --log true --trials 3 --n-layers 1
-elif [[ $SLURM_ARRAY_TASK_ID -eq 6 ]]; then # reference @ 2 layers - dropout - batchnorm
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 30 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none
-elif [[ $SLURM_ARRAY_TASK_ID -eq 7 ]]; then # reference + one-spike-only
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true
-elif [[ $SLURM_ARRAY_TASK_ID -eq 8 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true
-elif [[ $SLURM_ARRAY_TASK_ID -eq 9 ]]; then # reference + one-spike-only + substep 5
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 5
-elif [[ $SLURM_ARRAY_TASK_ID -eq 10 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 5
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 5
-elif [[ $SLURM_ARRAY_TASK_ID -eq 11 ]]; then # reference + one-spike-only + substep 10
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 10
-elif [[ $SLURM_ARRAY_TASK_ID -eq 12 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 10
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 10
-elif [[ $SLURM_ARRAY_TASK_ID -eq 13 ]]; then # reference + one-spike-only + substep 20
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 20
-elif [[ $SLURM_ARRAY_TASK_ID -eq 14 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 20
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 20
-elif [[ $SLURM_ARRAY_TASK_ID -eq 15 ]]; then # reference + one-spike-only + substep 50
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 2 --balance true --repeat 50
-elif [[ $SLURM_ARRAY_TASK_ID -eq 16 ]]; then # reference @ 2 layers - dropout - batchnorm + one-spike-only + substep 50
-  python main.py --model RLIF --dataset shd --gpu $gpu --dataset-folder SHD --n-epochs 50 --log true --trials 3 --n-layers 1 --dropout 0 --normalization none --balance true --repeat 50
+if [[ $SLURM_ARRAY_TASK_ID -eq 0 ]]; then # multi spike
+  python main.py --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0.0 --normalization none --track-balance --batch-size 30 --dataset-scale 200 --n-epochs 10 --new-exp-folder baseline_multispiker4 --trials 3 --plot --balance-metric lowpass --gpu 0 --repeat 4
+elif [[ $SLURM_ARRAY_TASK_ID -eq 1 ]]; then # multi spike
+  python main.py --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0.0 --normalization none --track-balance --batch-size 30 --dataset-scale 200 --n-epochs 10 --new-exp-folder baseline_multispiker8 --trials 3 --plot --balance-metric lowpass --gpu 0 --repeat 8  
+elif [[ $SLURM_ARRAY_TASK_ID -eq 2 ]]; then # single spike
+  python main.py --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0.0 --normalization none --track-balance --batch-size 30 --dataset-scale 200 --n-epochs 10 --new-exp-folder baseline_singlespike --single-spike --repeat 4 --trials 3 --plot --balance-metric lowpass --gpu 0
+elif [[ $SLURM_ARRAY_TASK_ID -eq 3 ]]; then # lsm
+  python main.py --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0.0 --normalization none --track-balance --batch-size 30 --dataset-scale 200 --n-epochs 10 --single-spike --repeat 4 --trials 3 --fix-w-in --fix-w-rec --fix-tau-out --fix-tau-rec --balance --plot --new-exp-folder lsm --balance-metric lowpass --gpu 0
+elif [[ $SLURM_ARRAY_TASK_ID -eq 4 ]]; then # janek best 0
+  python main.py --V-scale 0.2156983553211 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-tau-out --fix-w-rec --new-exp-folder best0 --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0
+elif [[ $SLURM_ARRAY_TASK_ID -eq 5 ]]; then # janek best 1
+  python main.py --V-scale 0.1261310791166 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --new-exp-folder best1 --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0
 fi
 
