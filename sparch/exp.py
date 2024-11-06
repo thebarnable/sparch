@@ -32,7 +32,6 @@ import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib.pyplot as plt
 
-from sparch.dataloaders.nonspiking_datasets import *
 from sparch.dataloaders.spiking_datasets import * 
 from sparch.models import anns
 from sparch.models import snns
