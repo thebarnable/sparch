@@ -439,14 +439,13 @@ class RLIFLayer(nn.Module):
         # Fixed parameters
         self.bidirectional = args.bidirectional
         self.batch_size = args.batch_size * (1 + self.bidirectional)
-        ref_param = np.log(args.alpha_init)
-        self.alpha_lim = [np.exp(ref_param*10), np.exp(ref_param/10)] if args.balance else [np.exp(-1 / 5), np.exp(-1 / 25)]
+        self.repeat = args.repeat
+        self.alpha_lim = [np.exp(-1/(1900*self.repeat)), np.exp(-1/(2100*self.repeat))] if args.dataset == "cue" else [np.exp(-1 / 5), np.exp(-1 / 25)]
         self.single_spike = args.single_spike
         self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
         self.track_balance = args.track_balance
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.repeat = args.repeat
         self.fix_w_in = args.fix_w_in
         self.fix_w_rec = args.fix_w_rec
         self.fix_tau_rec = args.fix_tau_rec
@@ -456,7 +455,7 @@ class RLIFLayer(nn.Module):
         self.reset = args.reset
         self.w_in_init = args.w_in_init
         
-        self.alpha_init = args.alpha_init
+        self.alpha_init = np.exp(-1/(2000*self.repeat)) if args.dataset == "cue" else args.alpha_init
         self.mu = args.mu
         self.nu = args.nu
         
@@ -809,9 +808,9 @@ class ReadoutLayer(nn.Module):
         super().__init__()
 
         # Fixed parameters
-        self.alpha_init = args.alpha_init
-        ref_param = np.log(self.alpha_init)
-        self.alpha_lim = [np.exp(ref_param*10), np.exp(ref_param/10)] if args.balance else [np.exp(-1 / 5), np.exp(-1 / 25)]
+        self.repeat = args.repeat
+        self.alpha_init = np.exp(-1/(15*self.repeat))
+        self.alpha_lim = [np.exp(-1 / (5*self.repeat)), np.exp(-1 / (25*self.repeat))]
         self.balance = args.balance
         self.t_crop = args.t_crop
         self.fix_w_out = args.fix_w_out
