@@ -57,6 +57,47 @@ def recurse_dir(path):
 
     return folders
 
+
+def plot_balance_example(path):
+    fig, axs = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1]}, figsize=(30,15))
+    fig.subplots_adjust(hspace=0)
+    colors  = [BLUE,RED,GREEN,YELLOW,VIOLET, DARKRED, DARKBLUE, GREY]
+    b, a = butter(4, 0.1, btype='low', analog=False)
+
+    t = 1000
+    x = list(range(t))
+    i_exc0 = np.random.randn(t)*0.8+1
+    i_inh0 = -i_exc0+np.random.randn(t)*0.5
+    i_exc0 = np.array(filtfilt(b, a, i_exc0))
+    i_inh0 = np.array(filtfilt(b, a, i_inh0))
+
+    i_exc1 = np.random.randn(t)*0.8+1
+    i_inh1 = -i_exc1+np.random.randn(t)*0.08
+    i_exc1 = np.array(filtfilt(b, a, i_exc1))
+    i_inh1 = np.array(filtfilt(b, a, i_inh1))
+    axs[0].plot(x[10:t-10], (i_exc0)[10:t-10], color=BLUE, linewidth=2.5+3)
+    axs[0].plot(x[10:t-10], (i_inh0)[10:t-10], color=RED, linewidth=2.5+3)
+    axs[0].plot(x[10:t-10], (i_exc0+i_inh0)[10:t-10], color=GREY, linewidth=1.5+3, linestyle='dashed')
+    axs[1].plot(x[10:t-10], (i_exc1)[10:t-10], color=BLUE, linewidth=2.5+3)
+    axs[1].plot(x[10:t-10], (i_inh1)[10:t-10], color=RED, linewidth=2.5+3)
+    axs[1].plot(x[10:t-10], (i_exc1+i_inh1)[10:t-10], color=GREY, linewidth=1.5+3, linestyle='dashed')
+
+    plt.axis('off')
+    for ax in axs:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+    if SAVE:
+        print(f"Saving in {path}")
+        plt.savefig(path)
+    if PLOT:
+        plt.show()
+    plt.clf()
+    plt.close()
+
 def plot_results(path):
     path = os.path.abspath(path)
     folders = recurse_dir(path)
@@ -136,6 +177,6 @@ if __name__ == '__main__':
     SCORE=args.score
 
     if args.function != "":
-        locals()[args.function]()
+        locals()[args.function](args.path)
     else:
         plot_results(args.path)
