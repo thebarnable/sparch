@@ -64,9 +64,9 @@ def main(args, trial = None):
   # define LDS of form: ẋ = Ax + c(t)
   if args.data == "float": # random data generation
     t = 20000
+    c_orig = np.zeros([t, J])
     for dim in range(J):
-      if dim==0: # default boerlin example
-        c_orig = np.zeros([t, J])
+      if dim==-1: # default boerlin example
         c_orig[0:2000, 0] = 0
         c_orig[2000:5000, 0] = 50
         c_orig[5000:7000, 0] = 0
@@ -114,7 +114,7 @@ def main(args, trial = None):
   w_out = np.zeros([J, N])  # relation to paper: output kernel Γ_i = w_out_i = w_out[:, i]
   if args.w_init == 'boerlin-fix':
     w_out[:,0:int(w_out.shape[1]/2)] = (1-alpha)/0.001
-    w_out[:,int(w_out.shape[1]/2):int(w_out.shape[1])] = -(1-alpha)/0.001 
+    w_out[:,int(w_out.shape[1]/2):int(w_out.shape[1])] = -(1-alpha)/0.001
   elif args.w_init == 'boerlin-rand':
     n=int(w_out.shape[1]/2)
     w_out[:,0:n] = np.random.binomial(1, 0.7, size=(J,n)) * np.random.uniform(0.06, 0.1, size=(J, n))
@@ -238,6 +238,7 @@ def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
   DARKRED = "#A84646"
   VIOLET = "#886A9B"
   GREY = "#636363"
+  BLACK = "#000000"
 
   # create plots
   t = list(range(0,seq_len))
@@ -258,19 +259,19 @@ def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
     y_axis = spikes[:,1] # y-axis: spiking neuron ids
     colors = len(x_axis)*[BLUE]
     axs[0].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
-    yticks = list(range(neurons_min,neurons_max,neurons_ticks))
-    axs[0].set_yticks(yticks)
-    axs[0].set_yticklabels(yticks, fontsize=12)
+    #yticks = list(range(neurons_min,neurons_max,neurons_ticks))
+    #axs[0].set_yticks(yticks)
+    #axs[0].set_yticklabels(yticks, fontsize=12)
   else:
     for dim in range(data_dim):
-      axs[0].plot(t, c[:, dim], color=GREY, label=f"c_{dim}", linestyle=ls[dim%len(ls)])
-    axs[0].legend()
+      axs[0].plot(t, c[:, dim], color=BLACK, label=f"c_{dim}", linestyle=ls[dim%len(ls)])
+    #axs[0].legend()
 
   # plot outputs
   for dim in range(data_dim):
     axs[1].plot(t, x[:, dim], color=GREY, label=f"x_{dim}", linestyle=ls[dim%len(ls)])
     axs[1].plot(t, x_snn[:, dim], color=YELLOW, label=f"x_snn_{dim}", linestyle=ls[dim%len(ls)])
-  axs[1].legend()
+  #axs[1].legend()
 
   # plot spike raster
   neurons_min, neurons_max = 0, o.shape[1]
@@ -279,33 +280,45 @@ def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
   spikes = np.argwhere(o[:,neurons_min:neurons_max]>0)
   x_axis = spikes[:,0] # x-axis: spike times
   y_axis = spikes[:,1]# y-axis: spiking neuron ids
-  colors = len(spikes[:,0])*[BLUE]
+  colors = len(spikes[:,0])*[GREY]
   axs[2].scatter(x_axis, y_axis, c=colors, marker = "o", s=10)
-  yticks=list(range(neurons_min,neurons_max,neurons_ticks))
-  axs[2].set_yticks(yticks)
-  axs[2].set_yticklabels(yticks, fontsize=12)
+  #yticks=list(range(neurons_min,neurons_max,neurons_ticks))
+  #axs[2].set_yticks(yticks)
+  #axs[2].set_yticklabels(yticks, fontsize=12)
 
   balanced_str = "unknown"
   if args.track_balance:
-    b, a = butter(4, 0.05, btype='low', analog=False)
+    b, a = butter(4, 0.1, btype='low', analog=False)
     i_exc_plot = i_exc[:, args.plot_neuron]
     i_inh_plot = i_inh[:, args.plot_neuron]
     i_exc_plot = np.array(filtfilt(b, a, i_exc_plot))
     i_inh_plot = np.array(filtfilt(b, a, i_inh_plot))
-    axs[3].plot(t, i_exc_plot, color=BLUE, label="i_exc")
-    axs[3].plot(t, -i_inh_plot, color=RED, label="-i_inh")
-    axs[3].legend()
+    axs[3].plot(t, i_exc_plot, color=BLUE, label="i_exc", linewidth=3.5)
+    axs[3].plot(t, -i_inh_plot, color=RED, label="-i_inh", linewidth=3.5)
+    #axs[3].legend()
 
-    balanced = (-i_inh_plot-i_exc_plot)[1500:].mean() < BALANCE_EPS
-    balanced_str = "balanced" if balanced else "not balanced"
-    print("  Network is " + balanced_str)
+    #balanced = (-i_inh_plot-i_exc_plot)[1500:].mean() < BALANCE_EPS
+    balance_arr = np.array([[np.corrcoef(i_exc[:,  d], i_inh[:, d])[0][1] for d in range(i_exc.shape[1])]])
+    balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
+    balance = -np.mean(balance_arr)
+    balanced_str = "balanced" if balance>0.15 else "not_balanced"
+    print(f"  Balance: {balanced_str} ")
+
+  plt.axis('off')
+  for ax in axs:
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
 
   plt.xlabel('Timesteps')
   if args.save != "":
     if not os.path.exists(args.save_path):
       os.makedirs(args.save_path)
     e = np.mean((x-x_snn)**2)
-    plt.savefig(args.save_path + "/" + f"{e:.6f}" + args.save + "_balancestate_" + balanced_str + ".png", dpi=250)
+    plt.savefig(args.save_path + "/" + f"E{e:.6f}_" + f"B{balance:.6f}_" + args.save + "_balancestate_" + balanced_str + ".png", dpi=250)
   if args.plot:
     plt.show()
   plt.close()
