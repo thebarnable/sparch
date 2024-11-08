@@ -142,18 +142,23 @@ class SNN(nn.Module):
             # Assume only one layer => [0]
             currents_exc = self.currents_exc[0].cpu()
             currents_inh = self.currents_inh[0].cpu()
-            if self.balance_metric == "median":
-                currents_exc = scipy.signal.medfilt(currents_exc.numpy(), kernel_size=(1, 5, 1))
-                currents_inh = scipy.signal.medfilt(currents_inh.numpy(), kernel_size=(1, 5, 1))
-            elif self.balance_metric == "lowpass":
-                b, a = scipy.signal.butter(4, 0.5 if currents_exc.shape[1] < 1000 else 0.05, btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
-                currents_exc = np.array(scipy.signal.filtfilt(b, a, currents_exc, axis=1))
-                currents_inh = np.array(scipy.signal.filtfilt(b, a, currents_inh, axis=1))
 
-            balance_arr = np.array([[np.corrcoef(currents_exc[b, :,  d], currents_inh[b, :, d])[0][1] for d in range(currents_exc.shape[2])] for b in range(currents_exc.shape[0])])
+            currents_exc_med = scipy.signal.medfilt(currents_exc.numpy(), kernel_size=(1, 5, 1))
+            currents_inh_med = scipy.signal.medfilt(currents_inh.numpy(), kernel_size=(1, 5, 1))
+
+            balance_arr = np.array([[np.corrcoef(currents_exc_med[b, :,  d], currents_inh_med[b, :, d])[0][1] for d in range(currents_exc_med.shape[2])] for b in range(currents_exc_med.shape[0])])
             balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
             balance = -np.mean(balance_arr)
-            self.balance_val = balance
+            self.balance_val_med = balance
+
+            b, a = scipy.signal.butter(4, 0.5 if currents_exc.shape[1] < 1000 else 0.05, btype='low', analog=False) # 0.005/(0.5*spikes.shape[0])
+            currents_exc_low = np.array(scipy.signal.filtfilt(b, a, currents_exc, axis=1))
+            currents_inh_low = np.array(scipy.signal.filtfilt(b, a, currents_inh, axis=1))
+
+            balance_arr = np.array([[np.corrcoef(currents_exc_low[b, :,  d], currents_inh_low[b, :, d])[0][1] for d in range(currents_exc_low.shape[2])] for b in range(currents_exc_low.shape[0])])
+            balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
+            balance = -np.mean(balance_arr)
+            self.balance_val_low = balance
 
         return x, firing_rates
     

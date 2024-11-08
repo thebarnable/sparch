@@ -152,16 +152,19 @@ class Experiment:
             # Loop over epochs (training + validation)
             train_accs, train_frs, validation_accs, validation_frs = [], [], [], []
             if self.track_balance:
-                train_balances, valid_balances = [], []
+                train_balances_med, train_balances_low, valid_balances_med, valid_balances_low = [], [], [], []
             logging.info("\n------ Begin training ------\n")
 
             for e in range(best_epoch + 1, best_epoch + self.n_epochs + 1):
                 train_acc, train_fr = self.train_one_epoch(e)
                 if self.track_balance:
-                    train_balances.append(self.balance_val)
+                    train_balances_med.append(self.balance_val_med)
+                    train_balances_low.append(self.balance_val_low)
+
                 valid_acc, valid_fr = self.valid_one_epoch(e, self.valid_loader, test=False)
                 if self.track_balance:
-                    valid_balances.append(self.balance_val)
+                    valid_balances_med.append(self.balance_val_med)
+                    valid_balances_low.append(self.balance_val_low)
                 self.scheduler.step(valid_acc) # Update learning rate
                 if self.balance_refit:
                     print("Refitting network according to balance theory.")
@@ -175,7 +178,7 @@ class Experiment:
                     # Save best model
                     if self.save_best:
                         torch.save(self.net, f"{self.checkpoint_dir}/best_model.pth")
-                        logging.info(f"\nBest model saved with valid acc={valid_acc}" + (f" and balance={valid_balances[-1]}" if self.track_balance else ""))
+                        logging.info(f"\nBest model saved with valid acc={valid_acc}" + (f" and balance (lp)={valid_balances_low[-1]}" if self.track_balance else ""))
 
                 train_accs.append(train_acc)
                 train_frs.append(train_fr)
@@ -214,13 +217,16 @@ class Experiment:
         results = {}
         results["train_accs"] = train_accs
         results["train_frs"] = train_frs
-        results["train_balances"] = train_balances
+        results["train_balances_med"] = train_balances_med
+        results["train_balances_low"] = train_balances_low
         results["validation_accs"] = validation_accs
         results["validation_frs"] = validation_frs
-        results["validation_balances"] = valid_balances
+        results["validation_balances_med"] = valid_balances_med
+        results["validation_balances_low"] = valid_balances_low
         results["test_acc"] = test_acc
         results["test_fr"] = test_fr
-        results["test_balance"] = self.balance_val
+        results["test_balance_med"] = self.balance_val_med
+        results["test_balance_low"] = self.balance_val_low
         results["best_acc"] = best_acc
         results["best_epoch"] = best_epoch
         
@@ -453,7 +459,7 @@ class Experiment:
         self.net.train()
         losses, accs = [], []
         if self.track_balance:
-            balances, firing_rates_arr = [], []
+            balances_med, balances_low, firing_rates_arr = [], [], []
         epoch_spike_rate = 0
 
         pbar = tqdm.tqdm(total = len(self.train_loader), desc="Training: acc=0.0000, fr=0.0000" + (", balance=0.0000" if self.track_balance else ""))
@@ -468,7 +474,8 @@ class Experiment:
             output, firing_rates = self.net(x)
             
             if self.track_balance:
-                balances.append(self.net.balance_val)
+                balances_med.append(self.net.balance_val_med)
+                balances_low.append(self.net.balance_val_low)
                 firing_rates_arr.append(torch.mean(firing_rates).detach().cpu().numpy())
 
             # Compute loss
@@ -500,7 +507,7 @@ class Experiment:
                 self.net.plot(self.plot_dir+f"epoch{e}_class{label}_{self.plot_class_cnt[label]}.png")
                 self.plot_class_cnt[label]+=1
                 
-            pbar.set_description(f"Training: acc={acc:.4f}, fr={torch.mean(firing_rates):.4f}" + (f", balance={self.net.balance_val:.4f}" if self.track_balance else ""), refresh=False)
+            pbar.set_description(f"Training: acc={acc:.4f}, fr={torch.mean(firing_rates):.4f}" + (f", balance (lp)={self.net.balance_val_low:.4f}" if self.track_balance else ""), refresh=False)
 
             pbar.update(1)
             
@@ -527,8 +534,8 @@ class Experiment:
             if self.plot:
                 plt.clf()
                 _, ax = plt.subplots(figsize=(10, 5))
-                t = np.arange(len(balances))
-                ax.plot(t, balances, label="balance")
+                t = np.arange(len(balances_low))
+                ax.plot(t, balances_low, label="balance lowpass")
                 ax.set_xlabel("Batch")
                 ax.set_ylabel("Balance")
                 ax2 = ax.twinx()
@@ -538,8 +545,9 @@ class Experiment:
                 plt.savefig(self.plot_dir+f"epoch{e}_balance_fr.png", bbox_inches='tight', pad_inches=0.3)
                 
             
-            self.balance_val = np.mean(balances)
-            logging.info(f"Epoch {e}: Train balance={self.balance_val}")
+            self.balance_val_med = np.mean(balances_med)
+            self.balance_val_low = np.mean(balances_low)
+            logging.info(f"Epoch {e}: Train balance (lp)={self.balance_val_low}")
 
         end = time.time()
         elapsed = str(timedelta(seconds=end - start))
@@ -558,7 +566,7 @@ class Experiment:
             self.net.eval()
             losses, accs = [], []
             if self.track_balance:
-                balances = []
+                balances_med, balances_low = [], []
             epoch_spike_rate = 0
             
             pbar = tqdm.tqdm(total = len(dataloader), desc="Validation")
@@ -574,7 +582,8 @@ class Experiment:
                 output, firing_rates = self.net(x)
                 
                 if self.track_balance:
-                    balances.append(self.net.balance_val)
+                    balances_med.append(self.net.balance_val_med)
+                    balances_low.append(self.net.balance_val_low)
 
                 # Compute loss
                 loss_val = self.loss_fn(output, y)
@@ -599,12 +608,14 @@ class Experiment:
                 logging.info(f"Test loss={np.mean(losses)}")
                 logging.info(f"Test acc={mean_acc}")
                 if self.track_balance:
-                    logging.info(f"Test balance={np.mean(balances)}")
+                    logging.info(f"Test balance med={np.mean(balances_med)}")
+                    logging.info(f"Test balance low={np.mean(balances_low)}")
             else:
                 logging.info(f"Epoch {e}: Valid loss={np.mean(losses)}")
                 logging.info(f"Epoch {e}: Valid acc={mean_acc}")
                 if self.track_balance:
-                    logging.info(f"Epoch {e}: Valid balance={np.mean(balances)}")
+                    logging.info(f"Epoch {e}: Valid balance med={np.mean(balances_med)}")
+                    logging.info(f"Epoch {e}: Valid balance low={np.mean(balances_low)}")
 
             # Validation spike activity of whole epoch
             if self.net.__class__.__name__ == "SNN":
@@ -615,6 +626,7 @@ class Experiment:
                     logging.info(f"Epoch {e}: valid mean act rate={epoch_spike_rate}")
                     
             if self.track_balance:
-                self.balance_val = np.mean(balances)
+                self.balance_val_med = np.mean(balances_med)
+                self.balance_val_low = np.mean(balances_low)
 
             return mean_acc, epoch_spike_rate.cpu().detach().numpy()
