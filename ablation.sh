@@ -31,5 +31,12 @@ elif [[ $SLURM_ARRAY_TASK_ID -eq 4 ]]; then # janek best 0
   python main.py --V-scale 0.2156983553211 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-tau-out --fix-w-rec --new-exp-folder best0 --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0
 elif [[ $SLURM_ARRAY_TASK_ID -eq 5 ]]; then # janek best 1
   python main.py --V-scale 0.1261310791166 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --new-exp-folder best1 --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0
+elif [[ $SLURM_ARRAY_TASK_ID -eq 6 ]]; then # remix
+  python main.py --V-scale 0.111528 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-rec --new-exp-folder remix --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.000264 --nu 0.000390
+elif [[ $SLURM_ARRAY_TASK_ID -eq 7 ]]; then # refit
+  python main.py --V-scale 0.000013 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-in --new-exp-folder refit --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.001588 --nu 0.000489 --balance-refit
+elif [[ $SLURM_ARRAY_TASK_ID -eq 8 ]]; then # cuba
+  python main.py --V-scale 0.294403 --V-slow-scale 0.187194 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-in --new-exp-folder cuba --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.000162 --nu 0.003723 --slow-dynamics
+elif [[ $SLURM_ARRAY_TASK_ID -eq 9 ]]; then # cuba+refit
+  python main.py --V-scale 0.001121 --V-slow-scale 0.000012 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-in --fix-tau-out --new-exp-folder cuba_refit --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.002899 --nu 0.000188 --slow-dynamics --balance-refit
 fi
-
