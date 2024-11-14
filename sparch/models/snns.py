@@ -20,6 +20,7 @@ import scipy
 
 from sparch.helpers.plot import plot_network
 import sparch.helpers.surrogate as surrogate
+from sparch.helpers.noise import quant, gauss
 
 class SNN(nn.Module):
     """
@@ -452,6 +453,11 @@ class RLIFLayer(nn.Module):
         self.V_scale = args.V_scale
         self.V_slow_scale = args.V_slow_scale
         self.slow_dynamics = args.slow_dynamics
+
+        self.quantize = args.quantize
+        self.quantize_adc = args.quantize_adc
+        self.gauss = args.gauss
+        self.gauss_mul = args.gauss_mul
         
         self.alpha_init = np.exp(-1/(2000*self.repeat))
         self.mu = args.mu
@@ -532,7 +538,10 @@ class RLIFLayer(nn.Module):
             self.batch_size = x.shape[0]
 
         # Feed-forward affine transformations (all steps in parallel)
+        self.W.data = quant(self.W.data, self.quantize)  # quantize to fit on memristor
         Wx = torch.matmul(x, self.W.t())
+        Wx.data = gauss(Wx.data, self.gauss, self.gauss_mul)  # gaussian noise due to c2c and d2d variations
+        Wx.data = quant(Wx.data, self.quantize_adc)  # quantize to model output ADC
         if self.track_balance:
             with torch.no_grad():
                 self.I_inh = torch.matmul(x, torch.where(self.W < 0, self.W, torch.zeros_like(self.W)).t())
