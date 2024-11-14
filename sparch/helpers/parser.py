@@ -162,6 +162,29 @@ def add_model_options(parser):
         default=0.12,
         help="Accuracy threshold for pruning"
     )
+    parser.add_argument(
+        "--quantize",
+        type=str,
+        default="",
+        help="Perform fixed-point quantization on weights if set to BITS.FRAC"
+    )
+    parser.add_argument(
+        "--quantize-adc",
+        type=str,
+        default="",
+        help="Perform fixed-point quantization on output of Wx multiplication if set to BITS.FRAC (to model ADC)"
+    )
+    parser.add_argument(
+        "--gauss",
+        type=float,
+        default=0.0
+    )
+    parser.add_argument(
+        "--gauss-mul",
+        action='store_true',
+        default=False,
+        help="If True, the gaussian noise will be multiplied by output of Wx multiplication, otherwise added to it"
+    )
     return parser
 
 def add_training_options(parser):
