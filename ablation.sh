@@ -39,4 +39,9 @@ elif [[ $SLURM_ARRAY_TASK_ID -eq 8 ]]; then # cuba
   python main.py --V-scale 0.294403 --V-slow-scale 0.187194 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-in --new-exp-folder cuba --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.000162 --nu 0.003723 --slow-dynamics
 elif [[ $SLURM_ARRAY_TASK_ID -eq 9 ]]; then # cuba+refit
   python main.py --V-scale 0.001121 --V-slow-scale 0.000012 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-in --fix-tau-out --new-exp-folder cuba_refit --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.002899 --nu 0.000188 --slow-dynamics --balance-refit
+elif [[ $SLURM_ARRAY_TASK_ID -eq 10 ]]; then # noise test
+  for quant in 4 5 6 7 8 9 10 11 12; do
+    echo "running quantization $quant"
+    python main.py --V-scale 0.294403 --V-slow-scale 0.187194 --model RLIF --dataset cue --n-layer 1 --neurons 100 --dropout 0 --normalization none --track-balance --repeat 4 --batch-size 30 --single-spike --dataset-scale 200 --balance --fix-w-in --new-exp-folder quant$quant --n-epochs 10 --trials 3 --balance-metric lowpass --plot --gpu 0 --mu 0.000162 --nu 0.003723 --slow-dynamics --quantize $quant.1
+  done
 fi
