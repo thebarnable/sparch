@@ -67,7 +67,7 @@ class TestBEEP(unittest.TestCase):
         args = parser.parse_args()
         args.seed = 0
         args.new_exp_folder = FOLDER+"/test_beep_sample"
-        args.model = "BalancedRLIF"
+        args.model = "RLIF"
         args.dataset = "shd"
         args.dataset_folder = "SHD"
         args.n_layers = 1
@@ -75,7 +75,6 @@ class TestBEEP(unittest.TestCase):
         args.normalization = "none"
         args.single_spike = True
         args.track_balance = True
-        args.dataset_scale = 200
         exp = Experiment(args)
         
         data, _, label = next(iter(exp.train_loader))
