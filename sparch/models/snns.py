@@ -153,7 +153,7 @@ class LIFLayer(nn.Module):
         self.batch_size = args.batch_size * (1 + args.bidirectional)
         self.bidirectional = args.bidirectional
         self.alpha_lim = [np.exp(-1 / 5), np.exp(-1 / 25)]
-        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcar.apply
+        self.spike_fct = surrogate.SpikeFunctionBoxcar.apply if args.single_spike is False else surrogate.SingleSpikeFunctionBoxcarMax.apply if args.dataset == "shd" else surrogate.SingleSpikeFunctionBoxcar.apply
         self.substeps = args.substeps
         self.threshold = 1.0
 
