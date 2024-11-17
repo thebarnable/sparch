@@ -602,7 +602,7 @@ class RLIFLayer(nn.Module):
         for t in range(sim_time):
             # Compute and save membrane potential (RLIF)
             i_slow = torch.matmul(r, self.V_slow) if self.slow_dynamics else 0
-            ut = alpha * (ut - (st if not self.fix_w_rec else 0)) + (1-alpha) * (Wx[:, t, :] + torch.matmul(st, V) + i_slow)
+            ut = alpha * (ut - 0.01*st) + (1-alpha) * (Wx[:, t, :] + torch.matmul(st, V) + i_slow)
 
             # Compute spikes with surrogate gradient
             st = self.spike_fct(ut.clone(), v_thresh)
