@@ -1,0 +1,357 @@
+import torch
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, AutoMinorLocator
+from scipy.signal import butter, filtfilt
+from scipy.spatial.distance import euclidean, correlation #cosine, cityblock
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset, zoomed_inset_axes
+from sparch.dataloaders.spiking_datasets import CueAccumulationDataset
+import numpy as np
+import os
+import sys
+from pathlib import Path
+import math
+import yaml
+import argparse
+import random
+
+RED = "#D17171"
+YELLOW = "#F3A451"
+GREEN = "#7B9965"
+BLUE = "#5E7DAF"
+DARKBLUE = "#3C5E8A"
+DARKRED = "#A84646"
+VIOLET = "#886A9B"
+GREY = "#636363"
+LIGHTGREY = "#c9c5c5"
+BLACK = "#000000"
+PLOT=True
+SCORE=""
+OUTPUT="paper_plots"
+colors  = [BLUE,YELLOW,RED,GREEN,VIOLET, DARKRED, DARKBLUE, GREY, BLACK]
+linestyles = ['solid', 'dashed', 'dashdot', 'dotted']
+
+def recurse_dir(path):
+    folders = []
+    for (dirpath, dirs, files) in os.walk(path):
+        # potential result folder if 
+        # - contains run0 or trial_0 folders
+        # - contains result.pth directly
+        if "run0" in dirs or "trial_0" in dirs or ("results.pth" in files and "run" not in dirpath and "trial_" not in dirpath):
+            folders.append(dirpath)
+
+    return folders
+
+
+def plot_boerlin_sample():
+    dataset = CueAccumulationDataset(0, False)
+    sample = dataset[0].cpu().numpy()
+    sample_time = sample.shape[0]
+    sample_dim = sample.shape[1]
+
+    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(10,3))
+
+    # x axis
+    ax.set_xticks([])
+    ax.tick_params(axis='x', bottom=False, labelbottom=False)
+    ax.spines['bottom'].set_visible(False)
+
+    # y axis
+    ax.set_yticks([0, sample_dim/2, sample_dim])
+    ax.set_ylim(0, sample_dim)
+    ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
+    ax.tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax.spines['left'].set_position(('axes', 0.02)) 
+    ax.spines['left'].set_linewidth(2.0)
+    ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
+    ax.yaxis.set_label_coords(-0.05, 0.5)
+    ax.set_ylabel("Neurons", fontsize=15, fontweight='bold')
+
+    # other axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    #ax.margins(x=.01, y=.01)
+
+    # add data
+    spikes = np.argwhere(sample>0)
+    x = spikes[:,0] # x-axis: spike times
+    y = spikes[:,1] # y-axis: spiking neuron ids
+    colors = len(x)*[BLUE]
+    ax.scatter(x, y, c=colors, marker = "o", s=10, clip_on=False)
+
+    # plot
+    Path("paper_plots").mkdir(parents=True, exist_ok=True)
+    plt.savefig("paper_plots/cue_example.pdf", format='pdf', transparent=True)
+    plt.savefig("paper_plots/cue_example.svg", format='svg', transparent=True)
+    plt.savefig("paper_plots/cue_example.png", format='png', dpi=300, transparent=True)
+    if PLOT:
+        plt.show()
+        plt.clf()
+    plt.close()
+
+def plot_balance_example(path):
+    fig, axs = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1]}, figsize=(30,15))
+    fig.subplots_adjust(hspace=0)
+    colors  = [BLUE,RED,GREEN,YELLOW,VIOLET, DARKRED, DARKBLUE, GREY]
+    b, a = butter(4, 0.1, btype='low', analog=False)
+
+    t = 1000
+    x = list(range(t))
+    i_exc0 = np.random.randn(t)*0.8+1
+    i_inh0 = -i_exc0+np.random.randn(t)*0.5
+    i_exc0 = np.array(filtfilt(b, a, i_exc0))
+    i_inh0 = np.array(filtfilt(b, a, i_inh0))
+
+    i_exc1 = np.random.randn(t)*0.8+1
+    i_inh1 = -i_exc1+np.random.randn(t)*0.08
+    i_exc1 = np.array(filtfilt(b, a, i_exc1))
+    i_inh1 = np.array(filtfilt(b, a, i_inh1))
+    axs[0].plot(x[10:t-10], (i_exc0)[10:t-10], color=BLUE, linewidth=2.5+3)
+    axs[0].plot(x[10:t-10], (i_inh0)[10:t-10], color=RED, linewidth=2.5+3)
+    axs[0].plot(x[10:t-10], (i_exc0+i_inh0)[10:t-10], color=GREY, linewidth=1.5+3, linestyle='dashed')
+    axs[1].plot(x[10:t-10], (i_exc1)[10:t-10], color=BLUE, linewidth=2.5+3)
+    axs[1].plot(x[10:t-10], (i_inh1)[10:t-10], color=RED, linewidth=2.5+3)
+    axs[1].plot(x[10:t-10], (i_exc1+i_inh1)[10:t-10], color=GREY, linewidth=1.5+3, linestyle='dashed')
+
+    plt.axis('off')
+    for ax in axs:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+    print(f"Saving in {path}")
+    plt.savefig(path)
+    if PLOT:
+        plt.show()
+    plt.clf()
+    plt.close()
+
+def plot_results_cue():
+    folders = [
+        "results/paper/baseline_multispike", 
+        "results/paper/baseline_singlespike", 
+        "results/paper/lsm", 
+        "results/paper/train_all", 
+        "results/paper/train_tau_out", 
+        "results/paper/train_tau_rec", 
+        "results/paper/train_taurec_tauout",
+        "results/paper/train_win", 
+        "results/paper/train_wrec", 
+        "results/paper/train_wrec_win"
+    ]    
+    legend_labels = {
+        "baseline_multispike": "baseline_multispike", 
+        "baseline_singlespike": "baseline_singlespike", 
+        "lsm": "lsm", 
+        "train_all": "train_all",
+        "train_tau_out": "train_tau_out",
+        "train_tau_rec": "train_tau_rec",
+        "train_taurec_tauout": "train_taurec_tauout",
+        "train_win": "train_win",
+        "train_wrec": "train_wrec",
+        "train_wrec_win": "train_wrec_win"
+    }
+    metric_labels = {"acc": "Accuracy [%]", "fr": "Firing Rate [Hz]", "balance": "Balance"}
+    metric_axs = {0: "acc", 1: "fr", 2: "balance"}
+    colors = {
+        "train_all": DARKRED,
+        "train_tau_out": GREY,
+        "train_tau_rec": BLUE,
+        "train_taurec_tauout": YELLOW,
+        "train_win": RED,
+        "train_wrec": VIOLET,
+        "train_wrec_win": DARKBLUE,
+        "baseline_multispike": BLACK,
+        "baseline_singlespike": BLACK,
+        "lsm": YELLOW
+    }
+    linestyles = {
+        "train_all": "solid",
+        "train_tau_out": "solid",
+        "train_tau_rec": "solid",
+        "train_taurec_tauout": "solid",
+        "tauout": "solid",
+        "train_win": "solid",
+        "train_wrec": "solid",
+        "train_wrec_win": "solid",
+        "baseline_multispike": "solid",
+        "baseline_singlespike": "dotted",
+        "lsm": "solid"
+    }
+    exp_name="results_cue_lsm"
+    ignore="none"
+    ylims = {"acc": [0.4, 0.7, 1.0], "fr": [0.0, 0.1], "balance": [0.0, 0.5, 1.0]}
+    # folders = [
+    #     "results/paper/baseline_multispike", 
+    #     "results/paper/lsm", 
+    #     "results/paper/remix", 
+    #     "results/paper/refit", 
+    #     "results/paper/cuba", 
+    #     "results/paper/cuba_refit"
+    # ]    
+    # legend_labels = {
+    #     "baseline_multispike": "Baseline",
+    #     "lsm": "LSM",
+    #     "remix": "Fixed params",
+    #     "refit": "Reinforce",
+    #     "cuba": "CUBA",
+    #     "cuba_refit": "CUBA+Reinforce"
+    # }
+    # metric_labels = {"acc": "Accuracy [%]", "fr": "Firing Rate [Hz]", "balance": "Balance"}
+    # metric_axs = {0: "acc", 1: "fr", 2: "balance"}
+    # colors = {
+    #     "baseline_multispike": BLACK,
+    #     "lsm": BLACK,
+    #     "remix": BLUE,
+    #     "refit": YELLOW,
+    #     "cuba": GREEN,
+    #     "cuba_refit": RED
+    # }
+    # linestyles = {
+    #     "baseline_multispike": "solid",
+    #     "lsm": "dashed",
+    #     "remix": "solid",
+    #     "refit": "solid",
+    #     "cuba": "solid",
+    #     "cuba_refit": "solid"
+    # }
+    # ignore="baseline_singlespike"
+    # exp_name="results_cue"
+    # ylims = {"acc": [0.4, 0.7, 1.0], "fr": [0.0, 0.1], "balance": [0.0, 0.5, 1.0]}
+
+    fig, axs = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 1]}, figsize=(10,10))
+    axins = zoomed_inset_axes(axs[1], zoom=3, loc="upper right",bbox_to_anchor=(1.0, 0.5), bbox_transform=axs[1].transAxes)  # zoom=2 means 2x zoom
+    fig.subplots_adjust(hspace=0.2)
+    
+    fontsize = 16
+    labelsize = 15
+    folders = [f for f in folders if ignore not in f]
+    for i,folder in enumerate(folders):
+        print(f"Results for {folder}")
+
+        validation_results, test_results = {"acc": [], "fr": [], "balance": []}, {"acc": [], "fr": [], "balance": []}
+        skip=False
+
+        for j,metric in enumerate(["acc", "fr", "balance"]):
+            for trial_folder in os.walk(folder):
+                if "results.pth" in trial_folder[2]:
+                    print(f"Loading {trial_folder[0]}/results.pth")
+                    try:
+                        validation_data = torch.load(trial_folder[0]+"/results.pth",weights_only=False)["validation_"+metric+"s"]
+                        test_data = torch.load(trial_folder[0]+"/results.pth", weights_only=False)["test_"+metric]
+                    except:
+                        if metric=="balance":
+                            validation_data = torch.load(trial_folder[0]+"/results.pth", weights_only=False)["validation_"+metric+"s_low"]
+                            test_data = torch.load(trial_folder[0]+"/results.pth", weights_only=False)["test_"+metric+"_low"]
+                    if metric=="fr":
+                        validation_data=np.array(validation_data).tolist()
+                        #test_data=test_data
+                    elif metric=="acc":
+                        if test_data > 0.99:
+                            continue
+
+                    validation_results[metric].append(torch.tensor(validation_data))
+                    test_results[metric].append(test_data)
+
+            if len(validation_results["acc"]) == 0:
+                skip=True
+                continue
+
+            validation_results[metric] = torch.stack(validation_results[metric])
+            x = list(range(1,validation_results[metric].shape[1]+1))
+            y_mean = validation_results[metric].mean(axis=0)
+            y_ci = validation_results[metric].std(axis=0) #1.96 * np.std(results["score"], axis=0)/np.sqrt(len(x))
+
+            exp=folder.split("/")[-1]
+            axs[j].plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp])
+            #plt.plot(x, results["train_score"].mean(axis=0), color=colors[i%8], alpha=.1)
+            axs[j].fill_between(x, (y_mean-y_ci), (y_mean+y_ci), color=colors[exp], alpha=.1)
+            axs[j].set_ylabel(metric_labels[metric], fontsize=fontsize, fontweight='bold')
+
+            if metric=="fr":
+                axins.plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp])
+                axins.set_xlim(8, 9)
+                axins.set_ylim(1e-5, 5e-4)
+                axins.set_xticks([])
+                axins.set_yticks([1e-5, 1e-3], ["1e-5", "1e-3"])
+                axins.spines['top'].set_linewidth(1.0)
+                axins.spines['top'].set_color(LIGHTGREY)
+                axins.spines['right'].set_linewidth(1.0)
+                axins.spines['right'].set_color(LIGHTGREY)
+                axins.spines['bottom'].set_linewidth(1.0)
+                axins.spines['bottom'].set_color(LIGHTGREY)
+                axins.spines['left'].set_linewidth(1.0)
+                axins.spines['left'].set_color(LIGHTGREY)
+                axins.tick_params(axis='both', length=8, width=1.0, labelsize=labelsize, color=LIGHTGREY)
+
+        if skip:
+            print("Skipping",folder,"because it contains no results!")
+            continue
+
+        validation_accs, test_accs = validation_results["acc"], test_results["acc"]
+        print(f"(1) Highest validation accuracy (total): {validation_accs.max()*100:.2f}%")
+        print(f"(2) Highest validation accuracy (avg over trial): {validation_accs.mean(axis=0).max()*100:.2f}%")
+        print(f"(3) Average validation accuracy over last 5 epochs (avg over trial): {validation_accs.mean(axis=0)[-5:].mean()*100:.2f}%")
+        print(f"(4) Test accuracy (trial with (1)): {test_accs[validation_accs.max(dim=1)[0].argmax()]*100:.2f}%")
+        print("")
+
+    axs[2].set_xlabel('Epoch', fontsize=fontsize, fontweight='bold')
+    axs[2].xaxis.set_label_coords(0.5, -0.2)
+    def percentage_formatter(x, pos):
+        return f"{x * 100:.0f}" 
+    for i,ax in enumerate(axs):
+        metric = metric_axs[i]
+        if i==0:
+            ax.yaxis.set_major_formatter(FuncFormatter(percentage_formatter))
+
+        x_values, y_values = [], []
+        for line in ax.get_lines():
+            x_values.extend(line.get_xdata())
+            y_values.extend(line.get_ydata())
+
+        x_min, x_max = min(x_values), max(x_values)
+        y_min, y_max = ylims[metric][0], ylims[metric][-1]
+
+        if i==2:
+            ax.set_xticks([x_min, x_max])
+            ax.set_xlim(x_min , x_max)
+            ax.spines['bottom'].set_position(('outward', 15))
+            ax.spines['bottom'].set_linewidth(2.0)
+        else:
+            ax.set_xticks([])
+            ax.tick_params(axis='x', bottom=False, labelbottom=False)
+            ax.spines['bottom'].set_visible(False)
+        
+        ax.set_yticks(ylims[metric])
+        ax.set_ylim(y_min, y_max)
+        ax.tick_params(axis='both', length=15, width=2.0, labelsize=labelsize)
+        ax.spines['left'].set_position(('outward', 15)) 
+        ax.spines['left'].set_linewidth(2.0)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        ax.margins(x=.01, y=.01)
+        ax.yaxis.set_label_coords(-0.11, 0.5)
+    
+    mark_inset(axs[1], axins, loc1=3, loc2=4, zorder = 3, linewidth= 1.0, fc="none", ec=LIGHTGREY)
+    axs[1].legend(loc='upper right', bbox_to_anchor=(1.0, 1.5), fontsize=fontsize, ncol=2)
+    Path("paper_plots").mkdir(parents=True, exist_ok=True)
+    plt.savefig("paper_plots/"+exp_name+".pdf", format='pdf', transparent=True)
+    plt.savefig("paper_plots/"+exp_name+".svg", format='svg', transparent=True)
+    plt.savefig("paper_plots/"+exp_name+".png", format='png', dpi=300, transparent=True)
+    if PLOT:
+        plt.show()
+        plt.clf()
+    plt.clf()
+    plt.close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Plot script')
+    parser.add_argument('--function', '-f', default='', help='Plot function to call')
+    args = parser.parse_args()
+
+    if args.function != "":
+        locals()[args.function]()
+    else:
+        plot_results_cue()
