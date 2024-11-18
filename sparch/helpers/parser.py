@@ -272,6 +272,12 @@ def add_training_options(parser):
         "firing rates of spiking neurons within a given range.",
     )
     parser.add_argument(
+        "--balance-cost",
+        action='store_true',
+        default=False,
+        help="Whether to use the balance value as an additive cost term (scaled via reg-factor)"
+    )
+    parser.add_argument(
         "--reg-factor",
         type=float,
         default=0.5,

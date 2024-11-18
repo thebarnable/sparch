@@ -490,6 +490,8 @@ class Experiment:
                     reg_quiet = F.relu(self.reg_fmin - firing_rates).sum()
                     reg_burst = F.relu(firing_rates - self.reg_fmax).sum()
                     loss_val += self.reg_factor * (reg_quiet + reg_burst)
+                if self.balance_cost:
+                    loss_val += self.reg_factor * self.net.balance_val_low
 
             # Backpropagate
             self.opt.zero_grad()
