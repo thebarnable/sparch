@@ -17,6 +17,7 @@ import random
 RED = "#D17171"
 YELLOW = "#F3A451"
 GREEN = "#7B9965"
+DARKGREEN = "#46663C"
 BLUE = "#5E7DAF"
 DARKBLUE = "#3C5E8A"
 DARKRED = "#A84646"
@@ -41,6 +42,272 @@ def recurse_dir(path):
 
     return folders
 
+
+def plot_balance_fr():
+    folders = [
+        "results/paper/baseline_multispike", 
+        "results/paper/baseline_singlespike", 
+        "results/paper/lsm", 
+        "results/paper/train_all",
+        #"results/paper/train_tau_out", 
+        #"results/paper/train_tau_rec", 
+        #"results/paper/train_taurec_tauout",
+        "results/paper/train_win", 
+        "results/paper/train_wrec", 
+        "results/paper/train_wrec_win",
+        "results/paper/cuba",
+        #"results/paper/cuba_refit",
+        #"results/paper/refit",
+    ]   
+    # folders = [
+    #     "results/paper/baseline_multispike", 
+    #     "results/paper/baseline_singlespike", 
+    #     "results/paper/lsm", 
+    #     "results/paper/train_all",
+    #     #"results/paper/train_tau_out", 
+    #     "results/paper/train_tau_rec", 
+    #     "results/paper/train_taurec_tauout",
+    #     "results/paper/train_win", 
+    #     "results/paper/train_wrec", 
+    #     "results/paper/train_wrec_win",
+    #     "results/paper/cuba",
+    #     #"results/paper/cuba_refit",
+    #     #"results/paper/refit",
+    # ]
+    colors = {
+        "train_all": BLUE,
+        "train_tau_out": BLUE,
+        "train_tau_rec": GREEN,
+        "train_taurec_tauout": GREEN,
+        "train_win": RED,
+        "train_wrec": BLUE,
+        "train_wrec_win": BLUE,
+        "baseline_multispike": BLACK,
+        "baseline_singlespike": BLACK,
+        "lsm": BLACK,
+        "cuba": BLUE,
+        "cuba_refit": BLUE,
+        "refit": BLUE
+    }
+    x_none, y_none, x_bad, x_good, y_bad, y_good = [], [], [], [], [], []
+    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(10,6))
+    for i,folder in enumerate(folders):
+        #print(f"Results for {folder}")
+        exp = folder.split("/")[-1]
+
+        for trial_folder in os.walk(folder):
+            if "results.pth" in trial_folder[2]:
+                #print(f"Loading {trial_folder[0]}/results.pth")
+                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+                x = [results["test_balance_low"].tolist()] + np.array(results["train_balances_low"]).tolist() + np.array(results["validation_balances_low"]).tolist()
+                y = [results["test_fr"].tolist()] + np.array(results["train_frs"]).tolist() +np.array(results["validation_frs"]).tolist()
+                accs = [results["test_acc"].tolist()] + np.array(results["train_accs"]).tolist() +np.array(results["validation_accs"]).tolist()
+
+                for i,acc in enumerate(accs):
+                    if acc < 0.6:
+                        x_none.append(x[i])
+                        y_none.append(y[i])
+                    else:
+                        x_good.append(x[i])
+                        y_good.append(y[i])
+
+                if results["test_acc"] < 0.9:
+                    print(f"Bad accuracy for {folder}")
+    ax.scatter(x_none, y_none, c=len(x_none)*[BLACK], marker = "o", s=10, clip_on=False)
+    ax.scatter(x_bad, y_bad, c=len(x_bad)*[BLUE], marker = "o", s=10, clip_on=False)
+    ax.scatter(x_good, y_good, c=len(x_good)*[BLUE], marker = "o", s=10, clip_on=False)
+
+    # x axis
+    xlims = [0, 1.0]
+    ax.set_xticks(xlims)
+    ax.set_xlim(xlims[0], xlims[1])
+    ax.tick_params(axis='x', length=15, width=2.0, labelsize=15)
+    ax.tick_params(axis='x', which='minor', length=5, width=0.5)
+    ax.spines['bottom'].set_position(('outward', 15))
+    ax.spines['bottom'].set_linewidth(2.0)
+    #ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
+    ax.xaxis.set_label_coords(0.0, -0.075)
+    ax.set_xlabel("Balance", fontsize=15, fontweight='bold')
+
+    # y axis
+    ylims = [1e-4, 1e-2]
+    ax.set_yscale('log')
+    ax.set_yticks(ylims)
+    ax.set_ylim(ylims[0], ylims[1])
+    ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
+    ax.tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax.spines['left'].set_position(('outward', 15))
+    ax.spines['left'].set_linewidth(2.0)
+    # ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
+    ax.yaxis.set_label_coords(-0.1, 0.5)
+    ax.set_ylabel("Firing Rate [Hz]", fontsize=15, fontweight='bold')
+
+    # other axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    #ax.margins(x=.01, y=.01)
+
+    Path("paper_plots").mkdir(parents=True, exist_ok=True)
+    plt.savefig("paper_plots/balance_fr.pdf", format='pdf', transparent=True)
+    plt.savefig("paper_plots/balance_fr.svg", format='svg', transparent=True)
+    plt.savefig("paper_plots/balance_fr.png", format='png', dpi=300, transparent=True)
+    if PLOT:
+        plt.show()
+        plt.clf()
+    plt.clf()
+    plt.close()
+
+
+def plot_balance_fr2():
+    folders = [
+        "results/paper/baseline_multispike", 
+        "results/paper/baseline_singlespike", 
+        "results/paper/lsm", 
+        "results/paper/train_all",
+        #"results/paper/train_tau_out", 
+        #"results/paper/train_tau_rec", 
+        "results/paper/train_taurec_tauout",
+        "results/paper/train_win", 
+        "results/paper/train_wrec", 
+        "results/paper/train_wrec_win",
+        #"results/paper/cuba",
+        #"results/paper/cuba_refit",
+        #"results/paper/refit",
+    ]   
+    # folders = [
+    #     "results/paper/baseline_multispike", 
+    #     "results/paper/baseline_singlespike", 
+    #     "results/paper/lsm", 
+    #     "results/paper/train_all",
+    #     #"results/paper/train_tau_out", 
+    #     "results/paper/train_tau_rec", 
+    #     "results/paper/train_taurec_tauout",
+    #     "results/paper/train_win", 
+    #     "results/paper/train_wrec", 
+    #     "results/paper/train_wrec_win",
+    #     "results/paper/cuba",
+    #     #"results/paper/cuba_refit",
+    #     #"results/paper/refit",
+    # ]
+    colors = {
+        "train_all": BLUE,
+        "train_tau_out": BLUE,
+        "train_tau_rec": BLUE,
+        "train_taurec_tauout": BLUE,
+        "train_win": BLUE,
+        "train_wrec": BLUE,
+        "train_wrec_win": BLUE,
+        "baseline_multispike": BLACK,
+        "baseline_singlespike": BLACK,
+        "lsm": BLUE,
+        "cuba": BLUE,
+        "cuba_refit": BLUE,
+        "refit": BLUE
+    }
+    x = {
+        "train_all": [],
+        "train_tau_out": [],
+        "train_tau_rec": [],
+        "train_taurec_tauout": [],
+        "train_win": [],
+        "train_wrec": [],
+        "train_wrec_win": [],
+        "baseline_multispike": [],
+        "baseline_singlespike": [],
+        "lsm": [],
+        "cuba": [],
+        "cuba_refit": [],
+        "refit": []
+    }
+    y = {
+        "train_all": [],
+        "train_tau_out": [],
+        "train_tau_rec": [],
+        "train_taurec_tauout": [],
+        "train_win": [],
+        "train_wrec": [],
+        "train_wrec_win": [],
+        "baseline_multispike": [],
+        "baseline_singlespike": [],
+        "lsm": [],
+        "cuba": [],
+        "cuba_refit": [],
+        "refit": []
+    }
+
+    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(10,6))
+    for i,folder in enumerate(folders):
+        #print(f"Results for {folder}")
+        exp = folder.split("/")[-1]
+
+        for trial_folder in os.walk(folder):
+            if "results.pth" in trial_folder[2]:
+                #print(f"Loading {trial_folder[0]}/results.pth")
+                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+                if results["test_acc"] < 0.9:
+                    print(f"Bad accuracy for {folder}")
+                    continue
+                y[exp].extend([results["test_fr"].tolist()])
+                y[exp].extend(np.array(results["train_frs"]).tolist())
+                y[exp].extend(np.array(results["validation_frs"]).tolist())
+
+                x[exp].extend([results["test_balance_low"].tolist()])
+                x[exp].extend(np.array(results["train_balances_low"]).tolist())
+                x[exp].extend(np.array(results["validation_balances_low"]).tolist())
+
+
+            #exp=folder.split("/")[-1]
+            #axs[j].plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp])
+        # if x[exp][-1] > 0.7:
+        #     print(f"Large balance for {folder}")
+        # if x[exp][-1] < 0.3:
+        #     print(f"Small balance for {folder}")
+
+        # if x[exp][-1] < 0.6 and x[exp][-1] > 0.5 and y[exp][-1] < 0.00025 and y[exp][-1] > 0.00018:
+        #     print(f"Weird {folder}") 
+
+    for k,v in x.items():
+        ax.scatter(x[k], y[k], c=len(x[k])*[colors[k]], marker = "o", s=10, clip_on=False)
+
+    # x axis
+    xlims = [0, 1.0]
+    ax.set_xticks(xlims)
+    ax.set_xlim(xlims[0], xlims[1])
+    ax.tick_params(axis='x', length=15, width=2.0, labelsize=15)
+    ax.tick_params(axis='x', which='minor', length=5, width=0.5)
+    ax.spines['bottom'].set_position(('outward', 15))
+    ax.spines['bottom'].set_linewidth(2.0)
+    #ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
+    ax.xaxis.set_label_coords(0.0, -0.075)
+    ax.set_xlabel("Balance", fontsize=15, fontweight='bold')
+
+    # y axis
+    ylims = [1e-4, 1e-1]
+    ax.set_yscale('log')
+    ax.set_yticks(ylims)
+    ax.set_ylim(ylims[0], ylims[1])
+    ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
+    ax.tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax.spines['left'].set_position(('outward', 15))
+    ax.spines['left'].set_linewidth(2.0)
+    # ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
+    ax.yaxis.set_label_coords(-0.1, 0.5)
+    ax.set_ylabel("Firing Rate [Hz]", fontsize=15, fontweight='bold')
+
+    # other axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    #ax.margins(x=.01, y=.01)
+
+    Path("paper_plots").mkdir(parents=True, exist_ok=True)
+    plt.savefig("paper_plots/balance_fr.pdf", format='pdf', transparent=True)
+    plt.savefig("paper_plots/balance_fr.svg", format='svg', transparent=True)
+    plt.savefig("paper_plots/balance_fr.png", format='png', dpi=300, transparent=True)
+    if PLOT:
+        plt.show()
+        plt.clf()
+    plt.clf()
+    plt.close()
 
 def plot_boerlin_sample():
     dataset = CueAccumulationDataset(0, False)
@@ -132,39 +399,48 @@ def plot_results_cue():
         "results/paper/baseline_multispike", 
         "results/paper/baseline_singlespike", 
         "results/paper/lsm", 
-        "results/paper/train_all", 
-        "results/paper/train_tau_out", 
-        "results/paper/train_tau_rec", 
+        "results/paper/train_all",
+        #"results/paper/train_tau_out", 
+        #"results/paper/train_tau_rec", 
         "results/paper/train_taurec_tauout",
-        "results/paper/train_win", 
-        "results/paper/train_wrec", 
-        "results/paper/train_wrec_win"
+        #"results/paper/train_win", 
+        #"results/paper/train_wrec", 
+        #"results/paper/train_wrec_win",
+        "results/paper/cuba",
+        #"results/paper/cuba_refit",
+        #"results/paper/refit",
     ]    
     legend_labels = {
-        "baseline_multispike": "baseline_multispike", 
-        "baseline_singlespike": "baseline_singlespike", 
-        "lsm": "lsm", 
-        "train_all": "train_all",
+        "baseline_multispike": "Baseline", 
+        "baseline_singlespike": "Baseline (one spike per timestep)", 
+        "lsm": "LSM", 
+        "train_all": "Train W & λ",
         "train_tau_out": "train_tau_out",
         "train_tau_rec": "train_tau_rec",
-        "train_taurec_tauout": "train_taurec_tauout",
+        "train_taurec_tauout": "Train λ",
         "train_win": "train_win",
         "train_wrec": "train_wrec",
-        "train_wrec_win": "train_wrec_win"
+        "train_wrec_win": "train_wrec_win",
+        "cuba": "CUBA",
+        "cuba_refit": "cuba_refit",
+        "refit": "refit",
     }
     metric_labels = {"acc": "Accuracy [%]", "fr": "Firing Rate [Hz]", "balance": "Balance"}
     metric_axs = {0: "acc", 1: "fr", 2: "balance"}
     colors = {
-        "train_all": DARKRED,
+        "train_all": DARKBLUE,
         "train_tau_out": GREY,
         "train_tau_rec": BLUE,
-        "train_taurec_tauout": YELLOW,
+        "train_taurec_tauout": BLUE,
         "train_win": RED,
         "train_wrec": VIOLET,
         "train_wrec_win": DARKBLUE,
         "baseline_multispike": BLACK,
         "baseline_singlespike": BLACK,
-        "lsm": YELLOW
+        "lsm": RED,
+        "cuba": DARKRED,
+        "cuba_refit": DARKBLUE,
+        "refit": YELLOW
     }
     linestyles = {
         "train_all": "solid",
@@ -177,11 +453,17 @@ def plot_results_cue():
         "train_wrec_win": "solid",
         "baseline_multispike": "solid",
         "baseline_singlespike": "dotted",
-        "lsm": "solid"
+        "lsm": "solid",
+        "cuba": "solid",
+        "cuba_refit": "solid",
+        "refit": "solid"
     }
     exp_name="results_cue_lsm"
     ignore="none"
     ylims = {"acc": [0.4, 0.7, 1.0], "fr": [0.0, 0.1], "balance": [0.0, 0.5, 1.0]}
+    ylims_inset = [1e-5, 2e-3]
+    ylims_inset_str = ["1e-5", "2e-3"]
+    
     # folders = [
     #     "results/paper/baseline_multispike", 
     #     "results/paper/lsm", 
@@ -221,7 +503,7 @@ def plot_results_cue():
     # ylims = {"acc": [0.4, 0.7, 1.0], "fr": [0.0, 0.1], "balance": [0.0, 0.5, 1.0]}
 
     fig, axs = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 1]}, figsize=(10,10))
-    axins = zoomed_inset_axes(axs[1], zoom=3, loc="upper right",bbox_to_anchor=(1.0, 0.5), bbox_transform=axs[1].transAxes)  # zoom=2 means 2x zoom
+    axins = zoomed_inset_axes(axs[1], zoom=5, loc="upper right",bbox_to_anchor=(1.0, 0.5), bbox_transform=axs[1].transAxes)  # zoom=2 means 2x zoom
     fig.subplots_adjust(hspace=0.2)
     
     fontsize = 16
@@ -264,7 +546,7 @@ def plot_results_cue():
             y_ci = validation_results[metric].std(axis=0) #1.96 * np.std(results["score"], axis=0)/np.sqrt(len(x))
 
             exp=folder.split("/")[-1]
-            axs[j].plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp])
+            axs[j].plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp], clip_on=False)
             #plt.plot(x, results["train_score"].mean(axis=0), color=colors[i%8], alpha=.1)
             axs[j].fill_between(x, (y_mean-y_ci), (y_mean+y_ci), color=colors[exp], alpha=.1)
             axs[j].set_ylabel(metric_labels[metric], fontsize=fontsize, fontweight='bold')
@@ -272,9 +554,9 @@ def plot_results_cue():
             if metric=="fr":
                 axins.plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp])
                 axins.set_xlim(8, 9)
-                axins.set_ylim(1e-5, 5e-4)
+                axins.set_ylim(ylims_inset[0], ylims_inset[1])
                 axins.set_xticks([])
-                axins.set_yticks([1e-5, 1e-3], ["1e-5", "1e-3"])
+                axins.set_yticks(ylims_inset, ylims_inset_str)
                 axins.spines['top'].set_linewidth(1.0)
                 axins.spines['top'].set_color(LIGHTGREY)
                 axins.spines['right'].set_linewidth(1.0)
@@ -290,10 +572,13 @@ def plot_results_cue():
             continue
 
         validation_accs, test_accs = validation_results["acc"], test_results["acc"]
+        validation_frs, test_fr = validation_results["fr"], test_results["fr"]
         print(f"(1) Highest validation accuracy (total): {validation_accs.max()*100:.2f}%")
         print(f"(2) Highest validation accuracy (avg over trial): {validation_accs.mean(axis=0).max()*100:.2f}%")
         print(f"(3) Average validation accuracy over last 5 epochs (avg over trial): {validation_accs.mean(axis=0)[-5:].mean()*100:.2f}%")
         print(f"(4) Test accuracy (trial with (1)): {test_accs[validation_accs.max(dim=1)[0].argmax()]*100:.2f}%")
+        print(f"(5) Average firing rate (total): {validation_frs.mean():.6f}Hz")
+        print(f"(6) Test firing rate (trial with (1)): {float(test_fr[0]):.6f}Hz")
         print("")
 
     axs[2].set_xlabel('Epoch', fontsize=fontsize, fontweight='bold')
@@ -335,7 +620,7 @@ def plot_results_cue():
         ax.yaxis.set_label_coords(-0.11, 0.5)
     
     mark_inset(axs[1], axins, loc1=3, loc2=4, zorder = 3, linewidth= 1.0, fc="none", ec=LIGHTGREY)
-    axs[1].legend(loc='upper right', bbox_to_anchor=(1.0, 1.5), fontsize=fontsize, ncol=2)
+    axs[1].legend(loc='upper right', bbox_to_anchor=(1.0, 1.25), fontsize=fontsize, ncol=2)
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
     plt.savefig("paper_plots/"+exp_name+".pdf", format='pdf', transparent=True)
     plt.savefig("paper_plots/"+exp_name+".svg", format='svg', transparent=True)
