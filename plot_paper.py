@@ -423,40 +423,74 @@ def plot_balance_fr2():
     plt.close()
 
 def plot_boerlin_sample():
-    dataset = CueAccumulationDataset(0, False)
-    sample = dataset[0].cpu().numpy()
-    sample_time = sample.shape[0]
-    sample_dim = sample.shape[1]
+    networks = [
+        "spikes_local/baseline/plots/epoch10_class0_1.png_spikes.pth", 
+        "spikes_local/lsm/plots/epoch1_class0_0.png_spikes.pth",
+        "spikes_local/cuba/plots/epoch1_class0_0.png_spikes.pth"
+    ]
 
-    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(10,3))
+    fig, axs = plt.subplots(1+len(networks), 1, sharex=True, figsize=(7,10))
 
-    # x axis
-    ax.set_xticks([])
-    ax.tick_params(axis='x', bottom=False, labelbottom=False)
-    ax.spines['bottom'].set_visible(False)
+    for i,ax in enumerate(axs):
+        if i==0:
+            print(f"Loading dataset")
+            dataset = CueAccumulationDataset(0, False)
+            sample = dataset[0].cpu().numpy()
+            sample = sample.repeat(4, axis=0)
+            sample_time = sample.shape[0]
+            sample_dim = sample.shape[1]
+        else:
+            print(f"Loading network {networks[i-1]}")
+            sample = torch.load(networks[i-1], map_location='cpu', weights_only=False).detach().numpy()
+            sample_time = sample.shape[0]
+            sample_dim = sample.shape[1]
+            if sample_time==2250:
+                sample = sample.repeat(4, axis=0)
+                sample_time = 2250*4
 
-    # y axis
-    ax.set_yticks([0, sample_dim/2, sample_dim])
-    ax.set_ylim(0, sample_dim)
-    ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
-    ax.tick_params(axis='y', which='minor', length=5, width=0.5)
-    ax.spines['left'].set_position(('axes', 0.02)) 
-    ax.spines['left'].set_linewidth(2.0)
-    ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
-    ax.yaxis.set_label_coords(-0.05, 0.5)
-    ax.set_ylabel("Neurons", fontsize=15, fontweight='bold')
+        print(f"Sample time: {sample_time}")
+        print(f"Sample dim: {sample_dim}")
 
-    # other axes
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    #ax.margins(x=.01, y=.01)
+        # add data
+        spikes = np.argwhere(sample>0)
+        x = spikes[:,0] # x-axis: spike times
+        y = spikes[:,1] # y-axis: spiking neuron ids
+        colors = len(x)*[BLUE]
+        ax.scatter(x, y, c=colors, marker = "o", s=8, clip_on=False)
 
-    # add data
-    spikes = np.argwhere(sample>0)
-    x = spikes[:,0] # x-axis: spike times
-    y = spikes[:,1] # y-axis: spiking neuron ids
-    colors = len(x)*[BLUE]
-    ax.scatter(x, y, c=colors, marker = "o", s=10, clip_on=False)
+        # x axis
+        if ax == axs[-1]:
+            ax.set_xticks([0, sample_time], labels=["0", "2250"])
+            ax.set_xlim(0, sample_time)
+            ax.tick_params(axis='x', length=15, width=2.0, labelsize=15)
+            ax.tick_params(axis='x', which='minor', length=5, width=0.5)
+            ax.spines['bottom'].set_position(('outward', 15)) 
+            ax.spines['bottom'].set_linewidth(2.0)
+            #ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
+            ax.xaxis.set_label_coords(0.5, -0.5)
+            ax.set_xlabel("Time [ms]", fontsize=15, fontweight='bold')
+        else:
+            ax.set_xticks([])
+            ax.tick_params(axis='x', bottom=False, labelbottom=False)
+            ax.spines['bottom'].set_visible(False)
+
+        # y axis
+        ax.set_yticks([0, sample_dim/2, sample_dim])
+        ax.set_ylim(0, sample_dim)
+        ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
+        ax.tick_params(axis='y', which='minor', length=5, width=0.5)
+        ax.spines['left'].set_position(('outward', 15)) 
+        ax.spines['left'].set_linewidth(2.0)
+        ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/10))
+        #ax.yaxis.set_label_coords(-0.1, 0.5)
+        # if i==0:
+        #     ax.set_ylabel("Input\nNeurons", fontsize=15, fontweight='bold')
+        # else:
+        #     ax.set_ylabel("Recurrent\nNeurons", fontsize=15, fontweight='bold')
+
+        # other axes
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
 
     # plot
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
