@@ -43,6 +43,119 @@ def recurse_dir(path):
     return folders
 
 
+def plot_noise():
+    quants = list(range(4,12,1))
+    gauss = [10, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
+    folders_quant = ["results/noise_tests/quant"+i for i in quants]
+    folders_quant_ref = ["results/noise_tests_ref/quant"+i for i in quants]
+    folders_gauss = ["results/noise_tests/quant6_adc6_gauss"+i for i in gauss]
+    folders_gauss_ref = ["results/noise_tests_ref/quant6_adc6_gauss"+i for i in gauss]
+
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10,6))
+
+    # quant plot
+    ## get data
+    x, y, y_ref = [], [], []
+    for i,(folder, folder_ref) in enumerate(zip(folders_quant, folders_quant_ref)):
+        accs, accs_ref = [], []
+        for trial_folder in os.walk(folder):
+            if "results.pth" in trial_folder[2]:
+                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+                accs.append(results["test_acc"])
+        for trial_folder in os.walk(folder_ref):
+            if "results.pth" in trial_folder[2]:
+                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+                accs_ref.append(results["test_acc"])
+        x.append(quants[i])
+        y.append(np.mean(accs))
+        y_ref.append(np.mean(accs_ref))
+            
+    ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[0].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
+
+    ## x axis
+    xlims = [max(quants), min(quants)]
+    ax[0].set_xticks(xlims)
+    ax[0].set_xlim(xlims[0], xlims[1])
+    ax[0].tick_params(axis='x', length=15, width=2.0, labelsize=15)
+    ax[0].tick_params(axis='x', which='minor', length=5, width=0.5)
+    ax[0].spines['bottom'].set_position(('outward', 15))
+    ax[0].spines['bottom'].set_linewidth(2.0)
+    ax[0].xaxis.set_label_coords(0.0, -0.075)
+    ax[0].set_xlabel("# Bits", fontsize=15, fontweight='bold')
+
+    ## y axis
+    ylims = [0, 1]
+    ax[0].set_yticks(ylims)
+    ax[0].set_ylim(ylims[0], ylims[1])
+    ax[0].tick_params(axis='y', length=15, width=2.0, labelsize=15)
+    ax[0].tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax[0].spines['left'].set_position(('outward', 15))
+    ax[0].spines['left'].set_linewidth(2.0)
+    ax[0].yaxis.set_label_coords(-0.1, 0.5)
+    ax[0].set_ylabel("Accuracy [%]", fontsize=15, fontweight='bold')
+
+    ## other axes
+    ax[0].spines['top'].set_visible(False)
+    ax[0].spines['right'].set_visible(False)
+
+    # noise plot
+    ## get data
+    x, y, y_ref = [], [], []
+    for i,(folder, folder_ref) in enumerate(zip(folders_gauss, folders_gauss_ref)):
+        accs, accs_ref = [], []
+        for trial_folder in os.walk(folder):
+            if "results.pth" in trial_folder[2]:
+                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+                accs.append(results["test_acc"])
+        for trial_folder in os.walk(folder_ref):
+            if "results.pth" in trial_folder[2]:
+                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+                accs_ref.append(results["test_acc"])
+        x.append(quants[i])
+        y.append(np.mean(accs))
+        y_ref.append(np.mean(accs_ref))
+            
+    ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[1].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
+
+    ## x axis
+    xlims = [min(gauss), max(quants)]
+    ax[1].set_xticks(xlims)
+    ax[1].set_xlim(xlims[0], xlims[1])
+    ax[1].tick_params(axis='x', length=15, width=2.0, labelsize=15)
+    ax[1].tick_params(axis='x', which='minor', length=5, width=0.5)
+    ax[1].spines['bottom'].set_position(('outward', 15))
+    ax[1].spines['bottom'].set_linewidth(2.0)
+    ax[1].xaxis.set_label_coords(0.0, -0.075)
+    ax[1].set_xlabel("σ", fontsize=15, fontweight='bold')
+
+    ## y axis
+    ylims = [0, 1]
+    ax[1].set_yticks(ylims)
+    ax[1].set_ylim(ylims[0], ylims[1])
+    ax[1].tick_params(axis='y', length=15, width=2.0, labelsize=15)
+    ax[1].tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax[1].spines['left'].set_position(('outward', 15))
+    ax[1].spines['left'].set_linewidth(2.0)
+    ax[1].yaxis.set_label_coords(-0.1, 0.5)
+    ax[1].set_ylabel("Accuracy [%]", fontsize=15, fontweight='bold')
+
+    ## other axes
+    ax[1].spines['top'].set_visible(False)
+    ax[1].spines['right'].set_visible(False)    
+    
+
+    Path("paper_plots").mkdir(parents=True, exist_ok=True)
+    plt.savefig("paper_plots/noise.pdf", format='pdf', transparent=True)
+    plt.savefig("paper_plots/noise.svg", format='svg', transparent=True)
+    plt.savefig("paper_plots/noise.png", format='png', dpi=300, transparent=True)
+    if PLOT:
+        plt.show()
+        plt.clf()
+    plt.clf()
+    plt.close()
+
 def plot_balance_fr():
     folders = [
         "results/paper/baseline_multispike", 
