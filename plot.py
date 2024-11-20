@@ -117,8 +117,13 @@ def plot_results(path):
         for j,metric in enumerate(["acc", "fr", "balance"]):
             for trial_folder in os.walk(folder):
                 if "results.pth" in trial_folder[2]:
-                    validation_data = torch.load(trial_folder[0]+"/results.pth")["validation_"+metric+"s"]
-                    test_data = torch.load(trial_folder[0]+"/results.pth")["test_"+metric]
+                    try:
+                        validation_data = torch.load(trial_folder[0]+"/results.pth",weights_only=False)["validation_"+metric+"s"]
+                        test_data = torch.load(trial_folder[0]+"/results.pth", weights_only=False)["test_"+metric]
+                    except:
+                        if metric=="balance":
+                            validation_data = torch.load(trial_folder[0]+"/results.pth", weights_only=False)["validation_"+metric+"s_low"]
+                            test_data = torch.load(trial_folder[0]+"/results.pth", weights_only=False)["test_"+metric+"_low"]
                     if metric=="fr":
                         validation_data=np.array(validation_data).tolist()
                         #test_data=test_data
