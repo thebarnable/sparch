@@ -329,6 +329,12 @@ def add_training_options(parser):
         help="Activate plotting of spikes etc",
     )
     parser.add_argument(
+        "--save-spikes",
+        action='store_true',
+        default=False,
+        help="Save spiketrain (same one as in plot, at same freq, and only if --plot is also set)"            
+    )
+    parser.add_argument(
         "--plot-epoch-freq",
         type=int,
         default=2,

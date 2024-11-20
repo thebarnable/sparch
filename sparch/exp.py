@@ -68,9 +68,9 @@ class Experiment:
         # Unpack args into member variables
         for key, value in vars(args).items():
             setattr(self, key, value)
-        self.plot_classes = [0, 2, 4]
+        self.plot_classes = [0, 1]
         self.plot_class_cnt = {p:0 for p in self.plot_classes}
-        self.plot_class_cnt_max = 5
+        self.plot_class_cnt_max = 2
         self.plot_batch_id = 0
 
         self.outname = (self.dataset + "_" + self.model + "_" + \
@@ -184,6 +184,7 @@ class Experiment:
                 train_frs.append(train_fr)
                 validation_accs.append(valid_acc)
                 validation_frs.append(valid_fr)
+                self.plot_class_cnt = {p:0 for p in self.plot_classes}
                 logging.info("\n-----------------------------\n")
                 gc.collect()
 

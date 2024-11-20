@@ -50,6 +50,7 @@ class SNN(nn.Module):
         self.single_spike = args.single_spike
         self.track_balance = args.track_balance
         self.balance_metric = args.balance_metric
+        self.save_spikes =  args.save_spikes
 
         # Check params
         if args.auto_encoder:
@@ -164,6 +165,8 @@ class SNN(nn.Module):
         return x, firing_rates
     
     def plot(self, filename, show=False, lowpass=True):
+        if self.save_spikes:
+            torch.save(self.spikes[0,0,:,:], filename + "_spikes.pth")
         plot_network(self.inputs, self.spikes, self.layer_sizes, self.track_balance, self.currents_exc, self.currents_inh, self.voltages, show, lowpass=lowpass, filename=filename)
 
 
