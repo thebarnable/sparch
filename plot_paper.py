@@ -44,14 +44,15 @@ def recurse_dir(path):
 
 
 def plot_noise():
-    quants = list(range(4,12,1))
+    quants = list(range(4,11,1))
     gauss = [10, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
-    folders_quant = ["results/noise_tests/quant"+i for i in quants]
-    folders_quant_ref = ["results/noise_tests_ref/quant"+i for i in quants]
-    folders_gauss = ["results/noise_tests/quant6_adc6_gauss"+i for i in gauss]
-    folders_gauss_ref = ["results/noise_tests_ref/quant6_adc6_gauss"+i for i in gauss]
+    folders_quant = ["results/noise_tests_fix/quant"+str(i) for i in quants]
+    folders_quant_ref = ["results/noise_tests_ref/quant"+str(i) for i in quants]
+    folders_gauss = ["results/noise_tests_fix/quant6_adc6_gauss"+str(i) for i in gauss]
+    folders_gauss_ref = ["results/noise_tests_ref/quant6_adc6_gauss"+str(i) for i in gauss]
 
-    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10,6))
+    fig, ax = plt.subplots(2, 1, figsize=(10,6))
+    fig.subplots_adjust(hspace=0.5)
 
     # quant plot
     ## get data
@@ -62,26 +63,26 @@ def plot_noise():
             if "results.pth" in trial_folder[2]:
                 results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
                 accs.append(results["test_acc"])
-        for trial_folder in os.walk(folder_ref):
-            if "results.pth" in trial_folder[2]:
-                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
-                accs_ref.append(results["test_acc"])
+        # for trial_folder in os.walk(folder_ref):
+        #     if "results.pth" in trial_folder[2]:
+        #         results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+        #         accs_ref.append(results["test_acc"])
         x.append(quants[i])
         y.append(np.mean(accs))
-        y_ref.append(np.mean(accs_ref))
+        # y_ref.append(np.mean(accs_ref))
             
-    ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    # ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[0].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
 
     ## x axis
     xlims = [max(quants), min(quants)]
-    ax[0].set_xticks(xlims)
-    ax[0].set_xlim(xlims[0], xlims[1])
+    ax[0].set_xticks([10, 4])
+    ax[0].set_xlim(10, 4)
     ax[0].tick_params(axis='x', length=15, width=2.0, labelsize=15)
     ax[0].tick_params(axis='x', which='minor', length=5, width=0.5)
     ax[0].spines['bottom'].set_position(('outward', 15))
     ax[0].spines['bottom'].set_linewidth(2.0)
-    ax[0].xaxis.set_label_coords(0.0, -0.075)
+    ax[0].xaxis.set_label_coords(0.0, -0.15)
     ax[0].set_xlabel("# Bits", fontsize=15, fontweight='bold')
 
     ## y axis
@@ -108,19 +109,20 @@ def plot_noise():
             if "results.pth" in trial_folder[2]:
                 results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
                 accs.append(results["test_acc"])
-        for trial_folder in os.walk(folder_ref):
-            if "results.pth" in trial_folder[2]:
-                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
-                accs_ref.append(results["test_acc"])
-        x.append(quants[i])
+        # for trial_folder in os.walk(folder_ref):
+        #     if "results.pth" in trial_folder[2]:
+        #         results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+        #         accs_ref.append(results["test_acc"])
+        x.append(gauss[i])
         y.append(np.mean(accs))
-        y_ref.append(np.mean(accs_ref))
+        # y_ref.append(np.mean(accs_ref))
             
-    ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    # # ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[1].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
 
     ## x axis
-    xlims = [min(gauss), max(quants)]
+    xlims = [min(gauss), max(gauss)]
+    ax[1].set_xscale('log')
     ax[1].set_xticks(xlims)
     ax[1].set_xlim(xlims[0], xlims[1])
     ax[1].tick_params(axis='x', length=15, width=2.0, labelsize=15)
@@ -426,10 +428,10 @@ def plot_boerlin_sample():
     networks = [
         "spikes_local/baseline/plots/epoch10_class0_1.png_spikes.pth", 
         "spikes_local/lsm/plots/epoch1_class0_0.png_spikes.pth",
-        "spikes_local/cuba/plots/epoch1_class0_0.png_spikes.pth"
+        "spikes_local/cuba_oldreset/plots/epoch1_class0_0.png_spikes.pth"
     ]
 
-    fig, axs = plt.subplots(1+len(networks), 1, sharex=True, figsize=(7,10))
+    fig, axs = plt.subplots(1+len(networks)+1, 1, sharex=True, gridspec_kw={'height_ratios': [1, 0.3]+[1]*len(networks)}, figsize=(7,10))
 
     for i,ax in enumerate(axs):
         if i==0:
@@ -439,24 +441,25 @@ def plot_boerlin_sample():
             sample = sample.repeat(4, axis=0)
             sample_time = sample.shape[0]
             sample_dim = sample.shape[1]
-        else:
-            print(f"Loading network {networks[i-1]}")
-            sample = torch.load(networks[i-1], map_location='cpu', weights_only=False).detach().numpy()
+        elif i>1:
+            print(f"Loading network {networks[i-2]}")
+            sample = torch.load(networks[i-2], map_location='cpu', weights_only=False).detach().numpy()
             sample_time = sample.shape[0]
             sample_dim = sample.shape[1]
             if sample_time==2250:
                 sample = sample.repeat(4, axis=0)
                 sample_time = 2250*4
 
-        print(f"Sample time: {sample_time}")
-        print(f"Sample dim: {sample_dim}")
+        if i!=1:
+            print(f"Sample time: {sample_time}")
+            print(f"Sample dim: {sample_dim}")
 
-        # add data
-        spikes = np.argwhere(sample>0)
-        x = spikes[:,0] # x-axis: spike times
-        y = spikes[:,1] # y-axis: spiking neuron ids
-        colors = len(x)*[BLUE]
-        ax.scatter(x, y, c=colors, marker = "o", s=8, clip_on=False)
+            # add data
+            spikes = np.argwhere(sample>0)
+            x = spikes[:,0] # x-axis: spike times
+            y = spikes[:,1] # y-axis: spiking neuron ids
+            colors = len(x)*[BLUE]
+            ax.scatter(x, y, c=colors, marker = "o", s=8, clip_on=False)
 
         # x axis
         if ax == axs[-1]:
@@ -475,13 +478,18 @@ def plot_boerlin_sample():
             ax.spines['bottom'].set_visible(False)
 
         # y axis
-        ax.set_yticks([0, sample_dim/2, sample_dim])
-        ax.set_ylim(0, sample_dim)
-        ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
-        ax.tick_params(axis='y', which='minor', length=5, width=0.5)
-        ax.spines['left'].set_position(('outward', 15)) 
-        ax.spines['left'].set_linewidth(2.0)
-        ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/10))
+        if ax != axs[1]:
+            ax.set_yticks([0, sample_dim/2, sample_dim])
+            ax.set_ylim(0, sample_dim)
+            ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
+            ax.tick_params(axis='y', which='minor', length=5, width=0.5)
+            ax.spines['left'].set_position(('outward', 15)) 
+            ax.spines['left'].set_linewidth(2.0)
+            ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/10))
+        else:
+            ax.set_yticks([])
+            ax.tick_params(axis='y', bottom=False, labelbottom=False)
+            ax.spines['left'].set_visible(False)
         #ax.yaxis.set_label_coords(-0.1, 0.5)
         # if i==0:
         #     ax.set_ylabel("Input\nNeurons", fontsize=15, fontweight='bold')
@@ -493,6 +501,7 @@ def plot_boerlin_sample():
         ax.spines['right'].set_visible(False)
 
     # plot
+    plt.vlines(x=[0, 150*7*4, 150*7*4+1050*4, 150*7*4+1050*4+150*4], ymin=0, ymax=500, colors=GREY, ls='--', lw=2, label='vline_multiple - full height', clip_on=False)
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
     plt.savefig("paper_plots/cue_example.pdf", format='pdf', transparent=True)
     plt.savefig("paper_plots/cue_example.svg", format='svg', transparent=True)
