@@ -43,6 +43,219 @@ def recurse_dir(path):
     return folders
 
 
+def plot_unbalanced():
+#--n 40 --data cue --w-init rand --seed 5 --alpha 0.999 --auto-encoder --track-balance --plot-neuron 5 --plot --plot-input-raster --repeat 1 --sigma-s 0 --sigma-v 0 --repeat 10 --plot-dim 1 --save balanced.png
+#--n 40 --data cue --w-init rand --seed 5 --alpha 0.999 --auto-encoder --track-balance --plot-neuron 5 --plot --plot-input-raster --repeat 1 --sigma-s 0 --repeat 1 --sigma-v 0.1 --plot-dim 1 --save unbalanced.png
+    # define constants for leaky integrator example & unpack args for convenience
+    N = 40
+    scale = 200
+    dataset = CueAccumulationDataset(0, False)
+    np.random.seed(0)
+    
+    def sim(substeps, sigma_v, alpha):
+        c = scale*dataset[0].cpu().numpy()
+        c = c.repeat(substeps, axis=0)[:, 30:40]
+        t = c.shape[0]
+        J = c.shape[1]
+        # solve LDS with forward Euler and exact solution
+        x = np.zeros([t, J])
+        for k in range(t-1):
+            x[k+1] = alpha*x[k] + (1-alpha)*c[k]  # explicit euler
+
+        # set other weights
+        w_out = np.random.binomial(1, 0.7, size=(J,N)) * np.random.uniform(-(1-0.999)/0.001, (1-0.999)/0.001, size=(J, N))
+        w_in   = w_out.T.copy()   # NxJ
+        w_fast = w_out.T @ w_out  # NxN
+
+        v_thresh = 0.5*(np.diagonal(w_fast)) # np.linalg.norm(w_out,axis=0)
+        v_rest = np.full(N, 0, dtype=float)
+
+        w_fast = -w_fast
+
+        w_fast /= (1-0.999)
+        w_out /= (1-0.999)
+
+        w_fast_neg = np.where(w_fast<0, w_fast, 0)
+        w_fast_pos = np.where(w_fast>=0, w_fast, 0)
+        w_in_neg = np.where(w_in<0, w_in, 0)
+        w_in_pos = np.where(w_in>=0, w_in, 0)
+
+        # solve EBN with forward euler
+        x_snn = np.zeros([t, J])
+        v     = np.full([t, N], v_rest)
+        r     = np.zeros([t, N])
+        o     = np.zeros([t, N])
+        i_fast= np.zeros([t, N])
+        i_in  = np.zeros([t, N])
+
+        i_inh = np.zeros([t, N])
+        i_exc = np.zeros([t, N])
+        for k in range(t-1):
+            i_fast_inh = np.matmul(w_fast_neg, o[k])
+            i_fast_exc = np.matmul(w_fast_pos, o[k])
+            i_in_inh = np.matmul(w_in_neg, np.where(c[k]>=0, c[k], 0))  # c can be negative, so we need to use np.where for it to make sure we only use negative weights
+            i_in_inh += np.matmul(w_in_pos, np.where(c[k]<0, c[k], 0))
+            i_in_exc = np.matmul(w_in_neg, np.where(c[k]<0, c[k], 0))
+            i_in_exc += np.matmul(w_in_pos, np.where(c[k]>=0, c[k], 0))
+            i_inh[k] = i_fast_inh + i_in_inh
+            i_exc[k] = i_fast_exc + i_in_exc
+
+            i_fast[k] = i_fast_exc + i_fast_inh
+            i_in[k]   = i_in_exc + i_in_inh
+
+            # update membrane voltage
+            v[k+1] = alpha * v[k] + (1-alpha)*(i_in[k] + i_fast[k]) + sigma_v * np.random.randn(*v[k].shape)
+
+            # update rate
+            r[k+1] = alpha * r[k] + o[k]
+
+            # update output
+            x_snn[k+1] = alpha * x_snn[k] + (1-alpha)*np.matmul(w_out,o[k]) #np.matmul(w_out, r[k+1])
+
+            # spikes
+            spike_ids = np.asarray(np.argwhere(v[k+1] > v_thresh))
+            if len(spike_ids) > 0:
+                spike_id = np.random.choice(spike_ids[:, 0])  # spike_ids.shape = (Nspikes, 1) -> squeeze away second dimension (cant use np.squeeze() for arrays for (1,1) though)
+                o[k+1][spike_id] = 1
+
+        return c, x, x_snn, o, i_exc, i_inh
+
+    fig, axs = plt.subplots(4, 2, sharex=False, gridspec_kw={'height_ratios': [1, 2, 3, 2]}, figsize=(10,7))
+    fig.subplots_adjust(hspace=0.2, wspace=0.1)
+
+    for i in range(0,2):
+        if i==0:
+            alpha = 0.99
+            substeps = 1
+            noise = 0.1
+            t = 2250*substeps
+            c, x, x_snn, o, i_exc, i_inh = sim(substeps, noise, alpha)
+        else:
+            alpha = 0.999
+            substeps = 10
+            noise = 0
+            t = 2250*substeps
+            c, x, x_snn, o, i_exc, i_inh = sim(substeps, noise, alpha)
+
+        # define colors
+        RED = "#D17171"
+        YELLOW = "#F3A451"
+        GREEN = "#7B9965"
+        BLUE = "#5E7DAF"
+        DARKBLUE = "#3C5E8A"
+        DARKRED = "#A84646"
+        VIOLET = "#886A9B"
+        GREY = "#636363"
+        BLACK = "#000000"
+
+        # create plots
+        t_max = t
+        t = list(range(0,t_max))
+
+        # plot inputs 
+        spikes = np.argwhere(c>0)
+        x_axis = spikes[:,0] # x-axis: spike times
+        y_axis = spikes[:,1] # y-axis: spiking neuron ids
+        colors = len(x_axis)*[BLUE]
+        axs[0][i].scatter(x_axis, y_axis, c=colors, marker = "o", s=10, clip_on=False)
+
+        # plot outputs
+        b, a = butter(4, 0.1, btype='low', analog=False)
+        x_snn_pl = 0.5*x_snn[:, 0] if i==0 else x_snn[:,0]
+        axs[1][i].plot(t, x[:, 0], color=GREY, label="x_0", linestyle="solid", clip_on=True, linewidth=2.0)
+        axs[1][i].plot(t, x_snn_pl, color=YELLOW, label="x_snn_0", linestyle="solid", clip_on=True, linewidth=2.0)
+
+        spikes = np.argwhere(o>0)
+        x_axis = spikes[:,0] # x-axis: spike times
+        y_axis = spikes[:,1]# y-axis: spiking neuron ids
+        colors = len(spikes[:,0])*[BLUE]
+        axs[2][i].scatter(x_axis, y_axis, c=colors, marker = "o", s=10, clip_on=False)
+
+        b, a = butter(4, 0.1, btype='low', analog=False)
+        i_exc_plot = i_exc[:, 5]
+        i_inh_plot = i_inh[:, 5]
+        i_exc_plot = np.array(filtfilt(b, a, i_exc_plot))
+        i_inh_plot = np.array(filtfilt(b, a, i_inh_plot))
+        axs[3][i].plot(t, i_exc_plot, color=BLUE, label="i_exc", linewidth=2.0)
+        axs[3][i].plot(t, -i_inh_plot, color=RED, label="-i_inh", linewidth=2.0)
+
+        # style
+        ## x axes
+        for j in range(0,3):
+            axs[j][i].set_xticks([])
+            axs[j][i].tick_params(axis='x', bottom=False, labelbottom=False)
+            axs[j][i].spines['bottom'].set_visible(False)
+            axs[j][i].spines['top'].set_visible(False)
+            axs[j][i].spines['right'].set_visible(False)
+        axs[3][i].set_xticks([0, t_max], ["0", str(int(t_max/substeps))])
+        axs[3][i].set_xlim(0, t_max)
+        axs[3][i].tick_params(axis='x', length=15, width=2.0, labelsize=15)
+        axs[3][i].tick_params(axis='x', which='minor', length=5, width=0.5)
+        axs[3][i].spines['bottom'].set_position(('outward', 10))
+        axs[3][i].spines['bottom'].set_linewidth(2.0)
+        axs[3][i].xaxis.set_label_coords(0.0, -0.3)
+        axs[3][i].set_xlabel("Time [ms]", fontsize=15, fontweight='bold')
+        axs[3][i].spines['top'].set_visible(False)
+        axs[3][i].spines['right'].set_visible(False)
+
+        ## y axes
+        if i==0:
+            axs[0][i].set_yticks([0, 10])
+            axs[0][i].set_ylim(0, 10)
+            axs[0][i].tick_params(axis='y', length=15, width=2.0, labelsize=15)
+            axs[0][i].tick_params(axis='y', which='minor', length=5, width=0.5)
+            axs[0][i].spines['left'].set_position(('outward', 10))
+            axs[0][i].spines['left'].set_linewidth(2.0)
+            axs[0][i].yaxis.set_minor_locator(AutoMinorLocator(10))
+            axs[0][i].yaxis.set_label_coords(-0.1, 0.5)
+            #axs[0].set_ylabel("c", fontsize=15, fontweight='bold')
+
+            axs[1][i].set_yticks([0, 8]) #max(max(x[:,0]), max(x_snn[:,0]))])
+            axs[1][i].set_ylim(0, 8) #max(max(x[:,0]), max(x_snn[:,0])))
+            axs[1][i].tick_params(axis='y', length=15, width=2.0, labelsize=15)
+            axs[1][i].tick_params(axis='y', which='minor', length=5, width=0.5)
+            axs[1][i].spines['left'].set_position(('outward', 10))
+            axs[1][i].spines['left'].set_linewidth(2.0)
+            #axs[1].yaxis.set_minor_locator(AutoMinorLocator(10))
+            axs[1][i].yaxis.set_label_coords(-0.1, 0.5)
+            #axs[1].set_ylabel("s₀, ŝ₀", fontsize=15, fontweight='bold')
+
+            axs[2][i].set_yticks([0, 40])
+            axs[2][i].set_ylim(0, 40)
+            axs[2][i].tick_params(axis='y', length=15, width=2.0, labelsize=15)
+            axs[2][i].tick_params(axis='y', which='minor', length=5, width=0.5)
+            axs[2][i].spines['left'].set_position(('outward', 10))
+            axs[2][i].spines['left'].set_linewidth(2.0)
+            axs[2][i].yaxis.set_minor_locator(AutoMinorLocator(40))
+            axs[2][i].yaxis.set_label_coords(-0.1, 0.5)
+            #axs[2].set_ylabel("o", fontsize=15, fontweight='bold')
+
+            axs[3][i].set_yticks([0, 550])#max(i_exc_plot.max(), -i_inh_plot.max())])
+            axs[3][i].set_ylim(0, 550)#max(i_exc_plot.max(), -i_inh_plot.max()))
+            axs[3][i].tick_params(axis='y', length=15, width=2.0, labelsize=15)
+            axs[3][i].tick_params(axis='y', which='minor', length=5, width=0.5)
+            axs[3][i].spines['left'].set_position(('outward', 10))
+            axs[3][i].spines['left'].set_linewidth(2.0)
+            #axs[3].yaxis.set_minor_locator(AutoMinorLocator(10))
+            axs[3][i].yaxis.set_label_coords(-0.1, 0.5)
+            #axs[3].set_ylabel("i₀", fontsize=15, fontweight='bold')
+        else:
+            for j in range(0,4):
+                axs[j][i].set_yticks([])
+                axs[j][i].tick_params(axis='y', bottom=False, labelbottom=False)
+                axs[j][i].spines['left'].set_visible(False)
+
+
+    Path("paper_plots").mkdir(parents=True, exist_ok=True)
+    plt.savefig("paper_plots/balanced.pdf", format='pdf', transparent=True)
+    plt.savefig("paper_plots/balanced.svg", format='svg', transparent=True)
+    plt.savefig("paper_plots/balanced.png", format='png', dpi=300, transparent=True)
+    if PLOT:
+        plt.show()
+        plt.clf()
+    plt.clf()
+    plt.close()
+
 def plot_noise():
     quants = list(range(4,11,1))
     gauss = [10, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
