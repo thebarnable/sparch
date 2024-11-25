@@ -288,21 +288,19 @@ def plot(args, seq_len, c, x, x_snn, o, i_slow, i_fast, i_in, v, i_inh, i_exc):
 
   balanced_str = "unknown"
   if args.track_balance:
-    b, a = butter(4, 0.1, btype='low', analog=False)
-    i_exc_plot = i_exc[:, args.plot_neuron]
-    i_inh_plot = i_inh[:, args.plot_neuron]
-    i_exc_plot = np.array(filtfilt(b, a, i_exc_plot))
-    i_inh_plot = np.array(filtfilt(b, a, i_inh_plot))
-    axs[3].plot(t, i_exc_plot, color=BLUE, label="i_exc", linewidth=3.5)
-    axs[3].plot(t, -i_inh_plot, color=RED, label="-i_inh", linewidth=3.5)
+    b, a = butter(4, 0.05, btype='low', analog=False)
+    i_exc_plot = np.array(filtfilt(b, a, i_exc, axis=0))
+    i_inh_plot = np.array(filtfilt(b, a, i_inh, axis=0))
+    axs[3].plot(t, i_exc_plot[:, args.plot_neuron], color=BLUE, label="i_exc", linewidth=3.5)
+    axs[3].plot(t, -i_inh_plot[:, args.plot_neuron], color=RED, label="-i_inh", linewidth=3.5)
     #axs[3].legend()
 
     #balanced = (-i_inh_plot-i_exc_plot)[1500:].mean() < BALANCE_EPS
-    balance_arr = np.array([[np.corrcoef(i_exc[:,  d], i_inh[:, d])[0][1] for d in range(i_exc.shape[1])]])
+    balance_arr = np.array([[np.corrcoef(i_exc_plot[:,  d], i_inh_plot[:, d])[0][1] for d in range(i_exc.shape[1])]])
     balance_arr = np.nan_to_num(balance_arr, nan=0, posinf=0, neginf=0)
     balance = -np.mean(balance_arr)
     balanced_str = "balanced" if balance>0.15 else "not_balanced"
-    print(f"  Balance: {balanced_str} ")
+    print(f"  Balance: {balance}")
 
   plt.axis('off')
   for ax in axs:
