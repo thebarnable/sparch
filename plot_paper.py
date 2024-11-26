@@ -19,6 +19,7 @@ YELLOW = "#F3A451"
 GREEN = "#7B9965"
 DARKGREEN = "#46663C"
 BLUE = "#5E7DAF"
+LIGHTBLUE ="#8FA3C7"
 DARKBLUE = "#3C5E8A"
 DARKRED = "#A84646"
 VIOLET = "#886A9B"
@@ -41,7 +42,6 @@ def recurse_dir(path):
             folders.append(dirpath)
 
     return folders
-
 
 def plot_unbalanced():
 #--n 40 --data cue --w-init rand --seed 5 --alpha 0.999 --auto-encoder --track-balance --plot-neuron 5 --plot --plot-input-raster --repeat 1 --sigma-s 0 --sigma-v 0 --repeat 10 --plot-dim 1 --save balanced.png
@@ -256,97 +256,119 @@ def plot_unbalanced():
     plt.clf()
     plt.close()
 
+def percentage_formatter(x, pos):
+    return f"{x * 100:.0f}" 
+
 def plot_noise():
-    quants = list(range(4,11,1))
+    quants = list(range(4,13,1))
     gauss = [10, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
-    folders_quant = ["results/noise_tests_fix/quant"+str(i) for i in quants]
+    folders_quant = ["results/noise_tests_fix2/quant"+str(i) for i in quants]
     folders_quant_ref = ["results/noise_tests_ref/quant"+str(i) for i in quants]
-    folders_gauss = ["results/noise_tests_fix/quant6_adc6_gauss"+str(i) for i in gauss]
+    folders_gauss = ["results/noise_tests_fix2/quant6_adc6_gauss"+str(i) for i in gauss]
     folders_gauss_ref = ["results/noise_tests_ref/quant6_adc6_gauss"+str(i) for i in gauss]
 
-    fig, ax = plt.subplots(2, 1, figsize=(10,6))
-    fig.subplots_adjust(hspace=0.5)
+    fig, ax = plt.subplots(2, 1, figsize=(10,10))
+    fig.subplots_adjust(hspace=0.3)
 
     # quant plot
     ## get data
-    x, y, y_ref = [], [], []
-    for i,(folder, folder_ref) in enumerate(zip(folders_quant, folders_quant_ref)):
-        accs, accs_ref = [], []
-        for trial_folder in os.walk(folder):
-            if "results.pth" in trial_folder[2]:
-                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
-                accs.append(results["test_acc"])
-        # for trial_folder in os.walk(folder_ref):
-        #     if "results.pth" in trial_folder[2]:
-        #         results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
-        #         accs_ref.append(results["test_acc"])
-        x.append(quants[i])
-        y.append(np.mean(accs))
-        # y_ref.append(np.mean(accs_ref))
+    # x, y, y_ref = [], [], []
+    # for i,(folder, folder_ref) in enumerate(zip(folders_quant, folders_quant_ref)):
+    #     accs, accs_ref = [], []
+    #     for trial_folder in os.walk(folder):
+    #         if "results.pth" in trial_folder[2]:
+    #             results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+    #             accs.append(results["test_acc"])
+    #     # for trial_folder in os.walk(folder_ref):
+    #     #     if "results.pth" in trial_folder[2]:
+    #     #         results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+    #     #         accs_ref.append(results["test_acc"])
+    #     x.append(quants[i])
+    #     print(np.mean(accs))
+    #     y.append(np.mean(accs))
+    #     # y_ref.append(np.mean(accs_ref))
             
     # ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    y     = [0.9158, 0.9142, 0.9119, 0.9023, 0.9119, 0.8623, 0.8207, 0.6701, 0.5600] # from claix: noise_tests_fix2/quantX
+    y_ref = [0.9214, 0.9214, 0.8595, 0.7865, 0.7373, 0.6960, 0.7206, 0.6507, 0.5036] # from claix: noise_tests_ref_fix/quantX
+    x = list(reversed(quants)) #list(reversed(x))  # highest #bits first
     ax[0].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[0].axhline(y=0.9143, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: 91.43%', clip_on=False)
+    ax[0].axhline(y=0.9357, color=GREY, ls='--', lw=2, label='Baseline w/o noise: 93.57%', clip_on=False)
+    #plt.vlines(x=[0, 150*7*4, 150*7*4+1050*4, 150*7*4+1050*4+150*4], ymin=0, ymax=500, colors=GREY, ls='--', lw=2, label='vline_multiple - full height', clip_on=False)
 
     ## x axis
     xlims = [max(quants), min(quants)]
-    ax[0].set_xticks([10, 4])
-    ax[0].set_xlim(10, 4)
+    ax[0].set_xticks([12, 4])
+    ax[0].set_xlim(12, 4)
+    ax[0].xaxis.set_minor_locator(AutoMinorLocator(len(x)))
     ax[0].tick_params(axis='x', length=15, width=2.0, labelsize=15)
-    ax[0].tick_params(axis='x', which='minor', length=5, width=0.5)
+    ax[0].tick_params(axis='x', which='minor', length=10, width=0.5)
     ax[0].spines['bottom'].set_position(('outward', 15))
     ax[0].spines['bottom'].set_linewidth(2.0)
     ax[0].xaxis.set_label_coords(0.0, -0.15)
     ax[0].set_xlabel("# Bits", fontsize=15, fontweight='bold')
 
     ## y axis
-    ylims = [0, 1]
+    ylims = [0.5, 1]
     ax[0].set_yticks(ylims)
     ax[0].set_ylim(ylims[0], ylims[1])
     ax[0].tick_params(axis='y', length=15, width=2.0, labelsize=15)
-    ax[0].tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax[0].tick_params(axis='y', which='minor', length=10, width=0.5)
+    ax[0].yaxis.set_minor_locator(AutoMinorLocator(5))
     ax[0].spines['left'].set_position(('outward', 15))
     ax[0].spines['left'].set_linewidth(2.0)
     ax[0].yaxis.set_label_coords(-0.1, 0.5)
+    ax[0].yaxis.set_major_formatter(FuncFormatter(percentage_formatter))
     ax[0].set_ylabel("Accuracy [%]", fontsize=15, fontweight='bold')
 
     ## other axes
     ax[0].spines['top'].set_visible(False)
     ax[0].spines['right'].set_visible(False)
 
+    ## legend
+
     # noise plot
     ## get data
-    x, y, y_ref = [], [], []
-    for i,(folder, folder_ref) in enumerate(zip(folders_gauss, folders_gauss_ref)):
-        accs, accs_ref = [], []
-        for trial_folder in os.walk(folder):
-            if "results.pth" in trial_folder[2]:
-                results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
-                accs.append(results["test_acc"])
-        # for trial_folder in os.walk(folder_ref):
-        #     if "results.pth" in trial_folder[2]:
-        #         results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
-        #         accs_ref.append(results["test_acc"])
-        x.append(gauss[i])
-        y.append(np.mean(accs))
-        # y_ref.append(np.mean(accs_ref))
-            
+    # x, y, y_ref = [], [], []
+    # for i,(folder, folder_ref) in enumerate(zip(folders_gauss, folders_gauss_ref)):
+    #     accs, accs_ref = [], []
+    #     for trial_folder in os.walk(folder):
+    #         if "results.pth" in trial_folder[2]:
+    #             results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+    #             accs.append(results["test_acc"])
+    #     # for trial_folder in os.walk(folder_ref):
+    #     #     if "results.pth" in trial_folder[2]:
+    #     #         results=torch.load(trial_folder[0]+"/results.pth", weights_only=False)
+    #     #         accs_ref.append(results["test_acc"])
+    #     x.append(gauss[i])
+    #     y.append(np.mean(accs))
+    #     # y_ref.append(np.mean(accs_ref))
+
+    x     = list(reversed(gauss))
+    y     = [0.8207, 0.8119, 0.8023, 0.7119, 0.6623, 0.6207, 0.5701, 0.5600] # from claix: noise_tests_fix2/quant6_adc6_gaussX
+    y_ref = [0.7206, 0.7595, 0.6865, 0.6873, 0.5960, 0.5206, 0.5507, 0.5036] # from claix: noise_tests_ref_fix/quant6_adc6_gaussX   
     # # ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[1].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[1].axhline(y=0.9143, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: 91.43%', clip_on=False)
+    ax[1].axhline(y=0.9357, color=GREY, ls='--', lw=2, label='Baseline w/o noise: 93.57%', clip_on=False)
 
     ## x axis
     xlims = [min(gauss), max(gauss)]
     ax[1].set_xscale('log')
-    ax[1].set_xticks(xlims)
+    ax[1].set_xticks(gauss)
     ax[1].set_xlim(xlims[0], xlims[1])
     ax[1].tick_params(axis='x', length=15, width=2.0, labelsize=15)
-    ax[1].tick_params(axis='x', which='minor', length=5, width=0.5)
+    ax[1].tick_params(axis='x', which='minor', length=10, width=0.5)
     ax[1].spines['bottom'].set_position(('outward', 15))
     ax[1].spines['bottom'].set_linewidth(2.0)
-    ax[1].xaxis.set_label_coords(0.0, -0.075)
+    ax[1].xaxis.set_label_coords(0.0, -0.2)
     ax[1].set_xlabel("σ", fontsize=15, fontweight='bold')
 
     ## y axis
-    ylims = [0, 1]
+    ylims = [0.5, 1]
     ax[1].set_yticks(ylims)
     ax[1].set_ylim(ylims[0], ylims[1])
     ax[1].tick_params(axis='y', length=15, width=2.0, labelsize=15)
@@ -354,13 +376,17 @@ def plot_noise():
     ax[1].spines['left'].set_position(('outward', 15))
     ax[1].spines['left'].set_linewidth(2.0)
     ax[1].yaxis.set_label_coords(-0.1, 0.5)
+    ax[1].yaxis.set_major_formatter(FuncFormatter(percentage_formatter))
     ax[1].set_ylabel("Accuracy [%]", fontsize=15, fontweight='bold')
 
     ## other axes
     ax[1].spines['top'].set_visible(False)
     ax[1].spines['right'].set_visible(False)    
     
+    ## legend
+    ax[0].legend(loc='lower left', bbox_to_anchor=(0.0,0.0), fontsize=15, ncol=1)
 
+    # save and plot
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
     plt.savefig("paper_plots/noise.pdf", format='pdf', transparent=True)
     plt.savefig("paper_plots/noise.svg", format='svg', transparent=True)
