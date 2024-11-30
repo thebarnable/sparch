@@ -7,6 +7,11 @@
 #
 # This file is part of the sparch package
 #
+# Extension
+# Date: 30-11-2023
+# Author: Tim Stadtmann
+# Content: RLIF Layer can now implement tight E/I balance
+#
 """
 This is where the Spiking Neural Network (SNN) baseline is defined using the
 surrogate gradient method.

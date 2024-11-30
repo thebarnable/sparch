@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# File Name : boerlin.py
+# Purpose:
+#
+# Author: Tim Stadtmann
+#
+# Creation Date : 30-08-2024
+#
+# Copyright : (c) Tim Stadtmann
+# License : BSD-3-Clause
+# -----------------------------------------------------------------------------
+
 import numpy as np
 import random
 import argparse

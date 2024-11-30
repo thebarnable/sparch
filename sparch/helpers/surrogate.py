@@ -1,3 +1,17 @@
+# -----------------------------------------------------------------------------
+# File Name : main.py
+# Purpose:
+#
+# Author: Tim Stadtmann
+#
+# Creation Date : 28-08-2024
+#
+# Copyright : (c) Tim Stadtmann
+# License : BSD-3-Clause
+#
+# Based on snns.py in original Sparch package.
+# -----------------------------------------------------------------------------
+
 import torch
 
 class SpikeFunctionBoxcar(torch.autograd.Function):

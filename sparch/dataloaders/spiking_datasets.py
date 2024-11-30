@@ -7,6 +7,11 @@
 #
 # This file is part of the sparch package
 #
+# Extension
+# Date: 30-11-2023
+# Author: Tim Stadtmann
+# Content: CueAccumulationDataset
+#
 """
 This is where the dataloader is defined for the SHD and SSC datasets.
 """
@@ -101,7 +106,8 @@ class SpikingDataset(Dataset):
     
 
 class CueAccumulationDataset(Dataset):
-    """Adapted from the original TensorFlow e-prop implemation from TU Graz, available at https://github.com/IGITUGraz/eligibility_propagation
+    """Based on Charlotte Frenkels implementation: https://github.com/ChFrenkel/eprop-PyTorch
+    Adapted from the original TensorFlow e-prop implemation from TU Graz, available at https://github.com/IGITUGraz/eligibility_propagation
 
     Timing for cue_assignments[0] = [0,0,1,0,1,0,0]:
     t_silent (50ms) silence

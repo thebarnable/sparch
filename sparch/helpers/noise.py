@@ -1,6 +1,17 @@
+# -----------------------------------------------------------------------------
+# File Name : noise.py
+# Purpose:
+#
+# Author: Tim Stadtmann
+#
+# Creation Date : 30-11-2024
+#
+# Copyright : (c) Tim Stadtmann
+# License : BSD-3-Clause
+# -----------------------------------------------------------------------------
+
+
 import torch
-#import numpy as np
-#from fxpmath import Fxp
 try:
     import torch.ao.quantization as quantization
 except ImportError:
@@ -17,10 +28,6 @@ def quant(x, quantize):
     obs.to(device=x.device)
     _ = obs(x)
     scale, zero_point = obs.calculate_qparams()
-    # scale = scale.cuda().type_as(x)
-    # zero_point = zero_point.cuda().type_as(x)
-
-    #return torch.Tensor(np.array(Fxp(np.array(x), signed=True, n_word=n_bits, n_frac=n_frac)))
     return (
             torch.clamp(torch.round(x / scale + zero_point), 0, 2**n_bits-1) - zero_point
         ) * scale

@@ -5,8 +5,12 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This file is part of the sparch package
+# This file is part of the sparch package.
 #
+# Extension
+# Date: 30-11-2024
+# Author: Tim Stadtmann
+# Content: Cleanup, simplification, new parameters
 """
 This is to define the experiment class used to perform training and testing
 of ANNs and SNNs on all speech command recognition datasets.

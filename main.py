@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# File Name : main.py
+# Purpose:
+#
+# Author: Tim Stadtmann
+#
+# Creation Date : 28-08-2024
+#
+# Copyright : (c) Tim Stadtmann
+# License : BSD-3-Clause
+# -----------------------------------------------------------------------------
+
 import argparse
 import torch
 import argparse
