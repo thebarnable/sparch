@@ -4,6 +4,8 @@ from matplotlib.ticker import FuncFormatter, AutoMinorLocator
 from scipy.signal import butter, filtfilt
 from scipy.spatial.distance import euclidean, correlation #cosine, cityblock
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset, zoomed_inset_axes
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.lines import Line2D
 from sparch.dataloaders.spiking_datasets import CueAccumulationDataset
 import numpy as np
 import os
@@ -20,17 +22,23 @@ GREEN = "#7B9965"
 DARKGREEN = "#46663C"
 BLUE = "#5E7DAF"
 LIGHTBLUE ="#8FA3C7"
+LIGHTBLUE2 = "#16b0d9"
 DARKBLUE = "#3C5E8A"
 DARKRED = "#A84646"
 VIOLET = "#886A9B"
 GREY = "#636363"
 LIGHTGREY = "#c9c5c5"
+TURQUOISE = "#4CB5AE"
+ORANGE = "#FF9F45"
 BLACK = "#000000"
 PLOT=True
 SCORE=""
 OUTPUT="paper_plots"
 colors  = [BLUE,YELLOW,RED,GREEN,VIOLET, DARKRED, DARKBLUE, GREY, BLACK]
 linestyles = ['solid', 'dashed', 'dashdot', 'dotted']
+
+def percentage_formatter(x, pos):
+    return f"{x * 100:.0f}" 
 
 def recurse_dir(path):
     folders = []
@@ -256,9 +264,6 @@ def plot_unbalanced():
     plt.clf()
     plt.close()
 
-def percentage_formatter(x, pos):
-    return f"{x * 100:.0f}" 
-
 def plot_noise():
     quants = list(range(4,13,1))
     gauss = [10, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
@@ -294,15 +299,15 @@ def plot_noise():
     x = list(reversed(quants)) #list(reversed(x))  # highest #bits first
     ax[0].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
-    ax[0].axhline(y=0.9143, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: 91.43%', clip_on=False)
-    ax[0].axhline(y=0.9357, color=GREY, ls='--', lw=2, label='Baseline w/o noise: 93.57%', clip_on=False)
+    ax[0].axhline(y=0.9143, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o quant: 91.43%', clip_on=False)
+    ax[0].axhline(y=0.9357, color=GREY, ls='--', lw=2, label='Baseline w/o quant: 93.57%', clip_on=False)
     #plt.vlines(x=[0, 150*7*4, 150*7*4+1050*4, 150*7*4+1050*4+150*4], ymin=0, ymax=500, colors=GREY, ls='--', lw=2, label='vline_multiple - full height', clip_on=False)
 
     ## x axis
     xlims = [max(quants), min(quants)]
     ax[0].set_xticks([12, 4])
     ax[0].set_xlim(12, 4)
-    ax[0].xaxis.set_minor_locator(AutoMinorLocator(len(x)))
+    ax[0].xaxis.set_minor_locator(AutoMinorLocator(len(x)-1))
     ax[0].tick_params(axis='x', length=15, width=2.0, labelsize=15)
     ax[0].tick_params(axis='x', which='minor', length=10, width=0.5)
     ax[0].spines['bottom'].set_position(('outward', 15))
@@ -346,14 +351,21 @@ def plot_noise():
     #     y.append(np.mean(accs))
     #     # y_ref.append(np.mean(accs_ref))
 
-    x     = list(reversed(gauss))
-    y     = [0.8207, 0.8119, 0.8023, 0.7119, 0.6623, 0.6207, 0.5701, 0.5600] # from claix: noise_tests_fix2/quant6_adc6_gaussX
-    y_ref = [0.7206, 0.7595, 0.6865, 0.6873, 0.5960, 0.5206, 0.5507, 0.5036] # from claix: noise_tests_ref_fix/quant6_adc6_gaussX   
+    x       = list(reversed(gauss))
+    y6b     = [0.8300, 0.8119, 0.8023, 0.7119, 0.6623, 0.6207, 0.5701, 0.5600] # from claix: noise_tests_fix2/quant6_adc6_gaussX
+    y6b_ref = [0.6906, 0.7595, 0.6865, 0.6873, 0.5960, 0.5206, 0.5507, 0.5036] # from claix: noise_tests_ref_fix/quant6_adc6_gaussX   
+    y8b     = [0.9001, 0.9333, 0.8923, 0.8919, 0.7998, 0.7575, 0.6311, 0.6600]
+    y8b_ref = [0.7110, 0.7002, 0.7365, 0.7101, 0.6920, 0.6139, 0.5204, 0.5129]
     # # ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
-    ax[1].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
-    ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
-    ax[1].axhline(y=0.9143, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: 91.43%', clip_on=False)
-    ax[1].axhline(y=0.9357, color=GREY, ls='--', lw=2, label='Baseline w/o noise: 93.57%', clip_on=False)
+    ax[1].plot(x, y6b, color=BLUE, label="BSNN (6b)", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[1].plot(x, y6b_ref, color=BLACK, label="Baseline (6b)", linewidth=2.5, linestyle="solid", clip_on=False)
+    ax[1].axhline(y=0.8207, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: '+str(100*0.8207)+'%', clip_on=False)
+    ax[1].axhline(y=0.7206, color=GREY, ls='--', lw=2, label='Baseline w/o noise: '+str(100*0.7206)+'%', clip_on=False)
+
+    ax[1].plot(x, y8b, color=BLUE, label="BSNN (8b)", linewidth=2.5, linestyle="solid", clip_on=False,  marker='o', markersize=8,)
+    ax[1].plot(x, y8b_ref, color=BLACK, label="Baseline (8b)", linewidth=2.5, linestyle="solid", clip_on=False,  marker='o', markersize=8,)
+    ax[1].axhline(y=0.9119, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: '+str(100*0.9119)+'%', clip_on=False,  marker='o', markersize=8,)
+    ax[1].axhline(y=0.7373, color=GREY, ls='--', lw=2, label='Baseline w/o noise: '+str(f"{100*0.7373}:.4f")+'%', clip_on=False,  marker='o', markersize=8,)
 
     ## x axis
     xlims = [min(gauss), max(gauss)]
@@ -373,6 +385,7 @@ def plot_noise():
     ax[1].set_ylim(ylims[0], ylims[1])
     ax[1].tick_params(axis='y', length=15, width=2.0, labelsize=15)
     ax[1].tick_params(axis='y', which='minor', length=5, width=0.5)
+    ax[0].yaxis.set_minor_locator(AutoMinorLocator(5))
     ax[1].spines['left'].set_position(('outward', 15))
     ax[1].spines['left'].set_linewidth(2.0)
     ax[1].yaxis.set_label_coords(-0.1, 0.5)
@@ -385,6 +398,7 @@ def plot_noise():
     
     ## legend
     ax[0].legend(loc='lower left', bbox_to_anchor=(0.0,0.0), fontsize=15, ncol=1)
+    ax[1].legend(loc='lower left', bbox_to_anchor=(0.0,0.0), fontsize=15, ncol=2)
 
     # save and plot
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
@@ -402,14 +416,14 @@ def plot_balance_fr():
         "results/paper/baseline_multispike", 
         "results/paper/baseline_singlespike", 
         "results/paper/lsm", 
-        "results/paper/train_all",
-        #"results/paper/train_tau_out", 
-        #"results/paper/train_tau_rec", 
-        #"results/paper/train_taurec_tauout",
-        "results/paper/train_win", 
-        "results/paper/train_wrec", 
+        #"results/paper/train_all",
+        #"results/paper/train_tau_out", #x
+        #"results/paper/train_tau_rec",
+        "results/paper/train_taurec_tauout", #x
+        "results/paper/train_win",   #x 
+        #"results/paper/train_wrec", 
         "results/paper/train_wrec_win",
-        "results/paper/cuba",
+        #"results/paper/cuba",
         #"results/paper/cuba_refit",
         #"results/paper/refit",
     ]   
@@ -443,7 +457,8 @@ def plot_balance_fr():
         "cuba_refit": BLUE,
         "refit": BLUE
     }
-    x_none, y_none, x_bad, x_good, y_bad, y_good = [], [], [], [], [], []
+    #x_none, y_none, x_bad, x_good, y_bad, y_good = [], [], [], [], [], []
+    x_array, y_array, accs_array = [], [], []
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(10,6))
     for i,folder in enumerate(folders):
         #print(f"Results for {folder}")
@@ -458,18 +473,36 @@ def plot_balance_fr():
                 accs = [results["test_acc"].tolist()] + np.array(results["train_accs"]).tolist() +np.array(results["validation_accs"]).tolist()
 
                 for i,acc in enumerate(accs):
-                    if acc < 0.6:
-                        x_none.append(x[i])
-                        y_none.append(y[i])
-                    else:
-                        x_good.append(x[i])
-                        y_good.append(y[i])
+                    x_array.append(x[i])
+                    y_array.append(y[i])
+                    accs_array.append(acc)
+                    # if acc < 0.6:
+                    #     x_none.append(x[i])
+                    #     y_none.append(y[i])
+                    # else:
+                    #     x_good.append(x[i])
+                    #     y_good.append(y[i])
 
-                if results["test_acc"] < 0.9:
-                    print(f"Bad accuracy for {folder}")
-    ax.scatter(x_none, y_none, c=len(x_none)*[BLACK], marker = "o", s=10, clip_on=False)
-    ax.scatter(x_bad, y_bad, c=len(x_bad)*[BLUE], marker = "o", s=10, clip_on=False)
-    ax.scatter(x_good, y_good, c=len(x_good)*[BLUE], marker = "o", s=10, clip_on=False)
+                # if results["test_acc"] < 0.9:
+                #     print(f"Bad accuracy for {folder}")
+    #ax.scatter(x_none, y_none, c=len(x_none)*[BLACK], marker = "o", s=10, clip_on=False)
+    #ax.scatter(x_bad, y_bad, c=len(x_bad)*[BLUE], marker = "o", s=10, clip_on=False)
+    #ax.scatter(x_good, y_good, c=len(x_good)*[BLUE], marker = "o", s=10, clip_on=False)
+    custom_cmap = LinearSegmentedColormap.from_list("custom", ["#D62727", "#2C82C9"])
+    sc = ax.scatter(x_array, y_array, c=accs_array, cmap=custom_cmap, marker = "o", s=30, clip_on=False, vmin=0.5, vmax=1.0)
+    cbar = plt.colorbar(sc)
+    #cbar.set_label("Accuracy [%]", fontsize=15, fontweight='bold')
+    #cbar.ax.yaxis
+    cbar.ax.set_yticks([0.5, 1.0])
+    cbar.ax.set_ylim(0.5, 1.0)
+    cbar.ax.tick_params(axis='y', length=15, labelsize=15)
+    cbar.ax.tick_params(axis='y', which='minor', length=10, width=0.5)
+    cbar.ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    # cbar.ax.spines['left'].set_position(('outward', 15))
+    # cbar.ax.spines['left'].set_linewidth(2.0)
+    cbar.ax.yaxis.set_label_coords(2.5, 0.5)
+    cbar.ax.yaxis.set_major_formatter(FuncFormatter(percentage_formatter))
+    cbar.ax.set_ylabel("Accuracy [%]", fontsize=15, fontweight='bold')
 
     # x axis
     xlims = [0, 1.0]
@@ -484,9 +517,10 @@ def plot_balance_fr():
     ax.set_xlabel("Balance", fontsize=15, fontweight='bold')
 
     # y axis
-    ylims = [1e-4, 1e-2]
+    ylims = [1e-4, 1e-1]
+    ylims_str = ["0.1", "100"]
     ax.set_yscale('log')
-    ax.set_yticks(ylims)
+    ax.set_yticks(ylims, ylims_str)
     ax.set_ylim(ylims[0], ylims[1])
     ax.tick_params(axis='y', length=15, width=2.0, labelsize=15)
     ax.tick_params(axis='y', which='minor', length=5, width=0.5)
@@ -495,6 +529,17 @@ def plot_balance_fr():
     # ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
     ax.yaxis.set_label_coords(-0.1, 0.5)
     ax.set_ylabel("Firing Rate [Hz]", fontsize=15, fontweight='bold')
+
+    # ax.fill_between(np.linspace(0, 1, 10), 1e-4, 1e-2, color=GREY, alpha=.1, hatch='//', linewidth=1.5)  # 1e-4 spikes/timestep = 0.1 spikes/second; 1e-2 s/t = 10 spikes/second
+    # ax.annotate(
+    #     'Typical range in human brain',
+    #     xy=(0.8, 1e-2),
+    #     xytext=(0.45, 1.2e-2),
+    #     #arrowprops=dict(facecolor=GREY, edgecolor=GREY, shrink=0.05),
+    #     color = GREY,
+    #     fontsize=15,
+    #     fontweight='bold'
+    # )
 
     # other axes
     ax.spines['top'].set_visible(False)
@@ -777,12 +822,12 @@ def plot_balance_example():
     i_exc1 = (i_exc1)[10:t-10]
     i_inh1 = (i_inh1)[10:t-10]
 
-    axs[0].plot(x, i_exc0, color=BLUE, linewidth=2.5+3)
-    axs[0].plot(x, i_inh0, color=RED, linewidth=2.5+3)
-    axs[0].plot(x, i_exc0+i_inh0, color=GREY, linewidth=1.5+3, linestyle='dashed')
-    axs[1].plot(x, i_exc1, color=BLUE, linewidth=2.5+3)
-    axs[1].plot(x, i_inh1, color=RED, linewidth=2.5+3)
-    axs[1].plot(x, i_exc1+i_inh1, color=GREY, linewidth=1.5+3, linestyle='dashed')
+    axs[0].plot(x, i_exc0, color=BLUE, linewidth=6.5)
+    axs[0].plot(x, i_inh0, color=RED, linewidth=6.5)
+    axs[0].plot(x, i_exc0+i_inh0, color=GREY, linewidth=6.5, linestyle='dashed')
+    axs[1].plot(x, i_exc1, color=BLUE, linewidth=6.5)
+    axs[1].plot(x, i_inh1, color=RED, linewidth=6.5)
+    axs[1].plot(x, i_exc1+i_inh1, color=GREY, linewidth=6.5, linestyle='dashed')
 
     plt.axis('off')
     for ax in axs:
@@ -822,10 +867,10 @@ def plot_results_cue():
         "baseline_multispike": "Baseline", 
         "baseline_singlespike": "Baseline (one spike per timestep)", 
         "lsm": "LSM", 
-        "train_all": "Train W & λ",
+        "train_all": "Train W & α",
         "train_tau_out": "train_tau_out",
         "train_tau_rec": "train_tau_rec",
-        "train_taurec_tauout": "Train λ",
+        "train_taurec_tauout": "Train α",
         "train_win": "train_win",
         "train_wrec": "train_wrec",
         "train_wrec_win": "train_wrec_win",
@@ -839,13 +884,13 @@ def plot_results_cue():
         "train_all": DARKBLUE,
         "train_tau_out": GREY,
         "train_tau_rec": BLUE,
-        "train_taurec_tauout": BLUE,
+        "train_taurec_tauout": LIGHTBLUE2,
         "train_win": RED,
         "train_wrec": VIOLET,
         "train_wrec_win": DARKBLUE,
         "baseline_multispike": BLACK,
         "baseline_singlespike": BLACK,
-        "lsm": RED,
+        "lsm": ORANGE,
         "cuba": DARKRED,
         "cuba_refit": DARKBLUE,
         "refit": YELLOW
@@ -868,50 +913,10 @@ def plot_results_cue():
     }
     exp_name="results_cue_lsm"
     ignore="none"
-    ylims = {"acc": [0.4, 0.7, 1.0], "fr": [0.0, 0.1], "balance": [0.0, 0.5, 1.0]}
-    ylims_inset = [1e-5, 2e-3]
-    ylims_inset_str = ["1e-5", "2e-3"]
-    
-    # folders = [
-    #     "results/paper/baseline_multispike", 
-    #     "results/paper/lsm", 
-    #     "results/paper/remix", 
-    #     "results/paper/refit", 
-    #     "results/paper/cuba", 
-    #     "results/paper/cuba_refit"
-    # ]    
-    # legend_labels = {
-    #     "baseline_multispike": "Baseline",
-    #     "lsm": "LSM",
-    #     "remix": "Fixed params",
-    #     "refit": "Reinforce",
-    #     "cuba": "CUBA",
-    #     "cuba_refit": "CUBA+Reinforce"
-    # }
-    # metric_labels = {"acc": "Accuracy [%]", "fr": "Firing Rate [Hz]", "balance": "Balance"}
-    # metric_axs = {0: "acc", 1: "fr", 2: "balance"}
-    # colors = {
-    #     "baseline_multispike": BLACK,
-    #     "lsm": BLACK,
-    #     "remix": BLUE,
-    #     "refit": YELLOW,
-    #     "cuba": GREEN,
-    #     "cuba_refit": RED
-    # }
-    # linestyles = {
-    #     "baseline_multispike": "solid",
-    #     "lsm": "dashed",
-    #     "remix": "solid",
-    #     "refit": "solid",
-    #     "cuba": "solid",
-    #     "cuba_refit": "solid"
-    # }
-    # ignore="baseline_singlespike"
-    # exp_name="results_cue"
-    # ylims = {"acc": [0.4, 0.7, 1.0], "fr": [0.0, 0.1], "balance": [0.0, 0.5, 1.0]}
+    ylims = {"acc": [0.5, 1.0], "fr": [1e-4, 1e-1], "balance": [0.0, 0.5, 1.0]}
+    ylims_str = {"acc": ["0.5", "1.0"], "fr": ["0.1", "100"], "balance": ["0.0", "0.5", "1.0"]} # fr[spikes/second] = fr[spikes/timestep]/h -> x 1000
 
     fig, axs = plt.subplots(3, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1, 1]}, figsize=(10,10))
-    axins = zoomed_inset_axes(axs[1], zoom=5, loc="upper right",bbox_to_anchor=(1.0, 0.5), bbox_transform=axs[1].transAxes)  # zoom=2 means 2x zoom
     fig.subplots_adjust(hspace=0.2)
     
     fontsize = 16
@@ -960,20 +965,7 @@ def plot_results_cue():
             axs[j].set_ylabel(metric_labels[metric], fontsize=fontsize, fontweight='bold')
 
             if metric=="fr":
-                axins.plot(x, y_mean, color=colors[exp], label=legend_labels[exp], linewidth=2.5, linestyle=linestyles[exp])
-                axins.set_xlim(8, 9)
-                axins.set_ylim(ylims_inset[0], ylims_inset[1])
-                axins.set_xticks([])
-                axins.set_yticks(ylims_inset, ylims_inset_str)
-                axins.spines['top'].set_linewidth(1.0)
-                axins.spines['top'].set_color(LIGHTGREY)
-                axins.spines['right'].set_linewidth(1.0)
-                axins.spines['right'].set_color(LIGHTGREY)
-                axins.spines['bottom'].set_linewidth(1.0)
-                axins.spines['bottom'].set_color(LIGHTGREY)
-                axins.spines['left'].set_linewidth(1.0)
-                axins.spines['left'].set_color(LIGHTGREY)
-                axins.tick_params(axis='both', length=8, width=1.0, labelsize=labelsize, color=LIGHTGREY)
+                x_fr = x
 
         if skip:
             print("Skipping",folder,"because it contains no results!")
@@ -987,17 +979,42 @@ def plot_results_cue():
         print(f"(4) Test accuracy (trial with (1)): {test_accs[validation_accs.max(dim=1)[0].argmax()]*100:.2f}%")
         print(f"(5) Average firing rate (total): {validation_frs.mean():.6f}Hz")
         print(f"(6) Test firing rate (trial with (1)): {float(test_fr[0]):.6f}Hz")
+        print(f"(7) Average firing rate x ts: {(validation_frs.mean())*2250.0:.6f}Hz")
+        print(f"(8) Test firing rate x ts: {float(test_fr[0])*2250.0*4:.6f}Hz")
         print("")
 
+    axs[0].yaxis.set_major_formatter(FuncFormatter(percentage_formatter))
+    axs[0].yaxis.set_minor_locator(AutoMinorLocator(5))
+    axs[0].tick_params(axis='y', which='minor', length=5, width=0.5)
+    axs[1].set_yscale('log')
+    axs[1].tick_params(axis='y', which='minor', length=5, width=0.5)
+    axs[1].fill_between(x_fr, len(x_fr)*[1e-4], len(x_fr)*[1e-2], color=GREY, alpha=.1, hatch='//', linewidth=1.5)  # 1e-4 spikes/timestep = 0.1 spikes/second; 1e-2 s/t = 10 spikes/second
     axs[2].set_xlabel('Epoch', fontsize=fontsize, fontweight='bold')
     axs[2].xaxis.set_label_coords(0.5, -0.2)
-    def percentage_formatter(x, pos):
-        return f"{x * 100:.0f}" 
+
+    axs[1].annotate(
+        'Typical range in human brain',
+        xy=(5, 1e-2),
+        xytext=(4, 2e-1),
+        arrowprops=dict(facecolor=GREY, edgecolor=GREY, shrink=0.05),
+        color = GREY,
+        fontsize=15,
+        fontweight='bold'
+    )
+
+    # line = Line2D([0,0], [1, 1], color=BLACK, linewidth=6, linestyle='-')
+    # axs[1].add_line(line)
+
+    # axs[1].annotate(
+    #     '-',
+    #     xy=(1, 1e-4),
+    #     xytext=(1, 1e-2),
+    #     arrowprops=dict(facecolor=GREY, edgecolor=GREY, linewidth=8, arrowstyle='-'),
+    #     fontsize=15
+    # )
+
     for i,ax in enumerate(axs):
         metric = metric_axs[i]
-        if i==0:
-            ax.yaxis.set_major_formatter(FuncFormatter(percentage_formatter))
-
         x_values, y_values = [], []
         for line in ax.get_lines():
             x_values.extend(line.get_xdata())
@@ -1016,7 +1033,7 @@ def plot_results_cue():
             ax.tick_params(axis='x', bottom=False, labelbottom=False)
             ax.spines['bottom'].set_visible(False)
         
-        ax.set_yticks(ylims[metric])
+        ax.set_yticks(ylims[metric], ylims_str[metric])
         ax.set_ylim(y_min, y_max)
         ax.tick_params(axis='both', length=15, width=2.0, labelsize=labelsize)
         ax.spines['left'].set_position(('outward', 15)) 
@@ -1027,8 +1044,8 @@ def plot_results_cue():
         ax.margins(x=.01, y=.01)
         ax.yaxis.set_label_coords(-0.11, 0.5)
     
-    mark_inset(axs[1], axins, loc1=3, loc2=4, zorder = 3, linewidth= 1.0, fc="none", ec=LIGHTGREY)
-    axs[1].legend(loc='upper right', bbox_to_anchor=(1.0, 1.25), fontsize=fontsize, ncol=2)
+    
+    axs[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.5), fontsize=fontsize, ncol=2)
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
     plt.savefig("paper_plots/"+exp_name+".pdf", format='pdf', transparent=True)
     plt.savefig("paper_plots/"+exp_name+".svg", format='svg', transparent=True)
