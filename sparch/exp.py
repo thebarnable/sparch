@@ -131,8 +131,12 @@ class Experiment:
         self.balance_refit = args.balance_refit
 
         # Save commit ID in args & save args as yaml file
-        repo = git.Repo(search_parent_directories=True)
-        args.commit = str(repo.head.commit)
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            args.commit = str(repo.head.commit)
+        except:
+            args.commit = ""
+
         with open(self.exp_folder+"/params.yml", "w") as f:
             yaml.dump(args, f)
             
