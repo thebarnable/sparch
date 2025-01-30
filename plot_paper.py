@@ -988,7 +988,8 @@ def plot_results_cue():
     axs[0].tick_params(axis='y', which='minor', length=5, width=0.5)
     axs[1].set_yscale('log')
     axs[1].tick_params(axis='y', which='minor', length=5, width=0.5)
-    axs[1].fill_between(x_fr, len(x_fr)*[1e-4], len(x_fr)*[1e-2], color=GREY, alpha=.1, hatch='//', linewidth=1.5)  # 1e-4 spikes/timestep = 0.1 spikes/second; 1e-2 s/t = 10 spikes/second
+    #axs[1].fill_between(x_fr, len(x_fr)*[1e-4], len(x_fr)*[1e-2], color=GREY, alpha=.1, hatch='//', linewidth=1.5)  # 1e-4 spikes/timestep = 0.1 spikes/second; 1e-2 s/t = 10 spikes/second
+
     axs[2].set_xlabel('Epoch', fontsize=fontsize, fontweight='bold')
     axs[2].xaxis.set_label_coords(0.5, -0.2)
 
