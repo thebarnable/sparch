@@ -1,7 +1,7 @@
 # BSNNs: Balanced and Efficient Spiking Neural Networks
 
 This Pytorch toolkit is a framework for developing and analyzing balanced spiking neural networks (BSNNs).
-Please refer to our publication, "Balanced and Efficient Spiking Neural Networks" by T. Stadtmann, J. Paeßens & T. Gemmeke, for more details.
+Please refer to our publication, "Balanced and Efficient Spiking Neural Networks" for more details.
 
 It is based on the [Sparch toolkit](https://github.com/idiap/sparch), introduced in [A Surrogate Gradient Spiking Baseline for Speech Command Recognition](https://doi.org/10.3389/fnins.2022.865897) by A. Bittar and P. Garner (2022).
 All original functionality is obtained, refer to the original repository for more details.
