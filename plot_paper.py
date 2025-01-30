@@ -296,11 +296,13 @@ def plot_noise():
     # ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
     y     = [0.9158, 0.9142, 0.9119, 0.9023, 0.9119, 0.8623, 0.8207, 0.6701, 0.5600] # from claix: noise_tests_fix2/quantX
     y_ref = [0.9214, 0.9214, 0.8595, 0.7865, 0.7373, 0.6960, 0.7206, 0.6507, 0.5036] # from claix: noise_tests_ref_fix/quantX
+    baseline = 0.9143
+    baseline_ref = 0.9357
     x = list(reversed(quants)) #list(reversed(x))  # highest #bits first
     ax[0].plot(x, y, color=BLUE, label="BSNN", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[0].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
-    ax[0].axhline(y=0.9143, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o quant: 91.43%', clip_on=False)
-    ax[0].axhline(y=0.9357, color=GREY, ls='--', lw=2, label='Baseline w/o quant: 93.57%', clip_on=False)
+    ax[0].axhline(y=baseline, color=LIGHTBLUE, ls='--', lw=2, clip_on=False) # , label='BSNN w/o quant: 91.43%'
+    ax[0].axhline(y=baseline_ref, color=GREY, ls='--', lw=2, clip_on=False) # , label='Baseline w/o quant: 93.57%'
     #plt.vlines(x=[0, 150*7*4, 150*7*4+1050*4, 150*7*4+1050*4+150*4], ymin=0, ymax=500, colors=GREY, ls='--', lw=2, label='vline_multiple - full height', clip_on=False)
 
     ## x axis
@@ -332,6 +334,10 @@ def plot_noise():
     ax[0].spines['top'].set_visible(False)
     ax[0].spines['right'].set_visible(False)
 
+    ## annotations
+    ax[0].annotate(f"{baseline_ref*100:.2f}%", xy=(4, baseline_ref), xytext=(4.9, baseline_ref*1.01), color = GREY, fontsize=15, fontweight='bold')
+    ax[0].annotate(f"{baseline*100:.2f}%", xy=(4, baseline), xytext=(4.9, baseline*0.96), color = LIGHTBLUE, fontsize=15, fontweight='bold')
+
     ## legend
 
     # noise plot
@@ -356,16 +362,21 @@ def plot_noise():
     y6b_ref = [0.6906, 0.7595, 0.6865, 0.6873, 0.5960, 0.5206, 0.5507, 0.5036] # from claix: noise_tests_ref_fix/quant6_adc6_gaussX   
     y8b     = [0.9001, 0.9333, 0.8923, 0.8919, 0.7998, 0.7575, 0.6311, 0.6600]
     y8b_ref = [0.7110, 0.7002, 0.7365, 0.7101, 0.6920, 0.6139, 0.5204, 0.5129]
+    baseline_6b = 0.8207
+    baseline_6b_ref = 0.7206
+    baseline_8b = 0.9119
+    baseline_8b_ref = 0.7373
+
     # # ax[1].plot(x, y_ref, color=BLACK, label="Baseline", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[1].plot(x, y6b, color=BLUE, label="BSNN (6b)", linewidth=2.5, linestyle="solid", clip_on=False)
     ax[1].plot(x, y6b_ref, color=BLACK, label="Baseline (6b)", linewidth=2.5, linestyle="solid", clip_on=False)
-    ax[1].axhline(y=0.8207, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: '+str(100*0.8207)+'%', clip_on=False)
-    ax[1].axhline(y=0.7206, color=GREY, ls='--', lw=2, label='Baseline w/o noise: '+str(100*0.7206)+'%', clip_on=False)
+    ax[1].axhline(y=baseline_6b, color=LIGHTBLUE, ls='--', lw=2, clip_on=False) # , label='BSNN w/o noise: '+str(100*0.8207)+'%'
+    ax[1].axhline(y=baseline_6b_ref, color=GREY, ls='--', lw=2, clip_on=False) # , label='Baseline w/o noise: '+str(100*0.7206)+'%'
 
     ax[1].plot(x, y8b, color=BLUE, label="BSNN (8b)", linewidth=2.5, linestyle="solid", clip_on=False,  marker='o', markersize=8,)
     ax[1].plot(x, y8b_ref, color=BLACK, label="Baseline (8b)", linewidth=2.5, linestyle="solid", clip_on=False,  marker='o', markersize=8,)
-    ax[1].axhline(y=0.9119, color=LIGHTBLUE, ls='--', lw=2, label='BSNN w/o noise: '+str(100*0.9119)+'%', clip_on=False,  marker='o', markersize=8,)
-    ax[1].axhline(y=0.7373, color=GREY, ls='--', lw=2, label='Baseline w/o noise: '+str(f"{100*0.7373}:.4f")+'%', clip_on=False,  marker='o', markersize=8,)
+    ax[1].axhline(y=baseline_8b, color=LIGHTBLUE, ls='--', lw=2, clip_on=False,  marker='o', markersize=8,) # , label='BSNN w/o noise: '+str(100*0.9119)+'%'
+    ax[1].axhline(y=baseline_8b_ref, color=GREY, ls='--', lw=2, clip_on=False,  marker='o', markersize=8,) # , label='Baseline w/o noise: '+str(f"{100*0.7373}:.4f")+'%'
 
     ## x axis
     xlims = [min(gauss), max(gauss)]
@@ -384,8 +395,8 @@ def plot_noise():
     ax[1].set_yticks(ylims)
     ax[1].set_ylim(ylims[0], ylims[1])
     ax[1].tick_params(axis='y', length=15, width=2.0, labelsize=15)
-    ax[1].tick_params(axis='y', which='minor', length=5, width=0.5)
-    ax[0].yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax[1].tick_params(axis='y', which='minor', length=10, width=0.5)
+    ax[1].yaxis.set_minor_locator(AutoMinorLocator(5))
     ax[1].spines['left'].set_position(('outward', 15))
     ax[1].spines['left'].set_linewidth(2.0)
     ax[1].yaxis.set_label_coords(-0.1, 0.5)
@@ -394,11 +405,31 @@ def plot_noise():
 
     ## other axes
     ax[1].spines['top'].set_visible(False)
-    ax[1].spines['right'].set_visible(False)    
+    ax[1].spines['right'].set_visible(False)
+
+    ## annotations
+    ax[1].annotate(f"{baseline_6b*100:.2f}%", xy=(10, baseline_6b), xytext=(1.8, baseline_6b*1.01), color = LIGHTBLUE, fontsize=15, fontweight='bold')
+    ax[1].annotate(f"{baseline_6b_ref*100:.2f}%", xy=(10, baseline_6b_ref), xytext=(1.8, baseline_6b_ref*0.95), color = GREY, fontsize=15, fontweight='bold')
+    ax[1].annotate(f"{baseline_8b*100:.2f}%", xy=(10, baseline_8b), xytext=(1.8, baseline_8b*1.01), color = LIGHTBLUE, fontsize=15, fontweight='bold')
+    ax[1].annotate(f"{baseline_8b_ref*100:.2f}%", xy=(10, baseline_8b_ref), xytext=(1.8, baseline_8b_ref*1.01), color = GREY, fontsize=15, fontweight='bold')
     
+    ax[0].scatter(6, baseline_6b, color = BLUE, marker='x', s=100)
+    ax[0].scatter(6, baseline_6b_ref, color = BLACK, marker='x', s=100)
+    ax[0].scatter(8, baseline_8b, color = BLUE, marker='x', s=100)
+    ax[0].scatter(8, baseline_8b_ref, color = BLACK, marker='x', s=100)
+    ax[0].annotate("⨯: used in noise experiments below", xy=(9, 0.5), xytext=(9, 0.5), color = BLACK, fontsize=15)#, fontweight='bold')
+    #ax[0].annotate("⨯", xy=(6, baseline_6b),        xytext=(6.2, baseline_6b*0.99), color = BLUE, fontsize=15, fontweight='bold')
+    #ax[0].annotate("⨯", xy=(6, baseline_6b_ref),    xytext=(6.2, baseline_6b_ref*0.99), color = BLACK, fontsize=15, fontweight='bold')
+    #ax[0].annotate("⨯", xy=(8, baseline_8b),        xytext=(8*0.9, baseline_8b*0.99), color = BLUE, fontsize=15, fontweight='bold')
+    #ax[0].annotate("⨯", xy=(8, baseline_8b_ref),    xytext=(8*0.9, baseline_8b_ref*0.99), color = BLACK, fontsize=15, fontweight='bold')
+
+
     ## legend
-    ax[0].legend(loc='lower left', bbox_to_anchor=(0.0,0.0), fontsize=15, ncol=1)
-    ax[1].legend(loc='lower left', bbox_to_anchor=(0.0,0.0), fontsize=15, ncol=2)
+    ax[0].legend(loc='lower left', bbox_to_anchor=(-0.02,-0.04), fontsize=15, ncol=1)
+    ax[1].legend(loc='lower left', bbox_to_anchor=(-0.02,-0.04), fontsize=15, ncol=2)
+
+    ax[0].set_title("A: Quantization", fontsize=16, fontweight='bold')
+    ax[1].set_title("B: Gaussian on quantized network", fontsize=16, fontweight='bold')
 
     # save and plot
     Path("paper_plots").mkdir(parents=True, exist_ok=True)
@@ -529,17 +560,6 @@ def plot_balance_fr():
     # ax.yaxis.set_minor_locator(AutoMinorLocator(sample_dim/2))
     ax.yaxis.set_label_coords(-0.1, 0.5)
     ax.set_ylabel("Firing Rate [Hz]", fontsize=15, fontweight='bold')
-
-    # ax.fill_between(np.linspace(0, 1, 10), 1e-4, 1e-2, color=GREY, alpha=.1, hatch='//', linewidth=1.5)  # 1e-4 spikes/timestep = 0.1 spikes/second; 1e-2 s/t = 10 spikes/second
-    # ax.annotate(
-    #     'Typical range in human brain',
-    #     xy=(0.8, 1e-2),
-    #     xytext=(0.45, 1.2e-2),
-    #     #arrowprops=dict(facecolor=GREY, edgecolor=GREY, shrink=0.05),
-    #     color = GREY,
-    #     fontsize=15,
-    #     fontweight='bold'
-    # )
 
     # other axes
     ax.spines['top'].set_visible(False)
@@ -867,10 +887,10 @@ def plot_results_cue():
         "baseline_multispike": "Baseline", 
         "baseline_singlespike": "Baseline (one spike per timestep)", 
         "lsm": "LSM", 
-        "train_all": "Train W & α",
+        "train_all": "Train W & λ",
         "train_tau_out": "train_tau_out",
         "train_tau_rec": "train_tau_rec",
-        "train_taurec_tauout": "Train α",
+        "train_taurec_tauout": "Train λ",
         "train_win": "train_win",
         "train_wrec": "train_wrec",
         "train_wrec_win": "train_wrec_win",
