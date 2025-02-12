@@ -127,7 +127,8 @@ class SNN(nn.Module):
             x = snn_lay(x)
             if not snn_lay.__class__ == ReadoutLayer:
                 self.spikes.append(x)
-                self.voltages.append(snn_lay.v)
+                if snn_lay.__class__ == RLIFLayer: # TODO: either implement voltage tracking in all layers or remove again
+                    self.voltages.append(snn_lay.v)
                 if self.track_balance:
                     if not (torch.isfinite(snn_lay.I_exc).all() and torch.isfinite(snn_lay.I_inh).all()):
                         print("Warning: currents are NaN, setting to 0.0")
@@ -135,8 +136,8 @@ class SNN(nn.Module):
                     self.currents_exc.append(snn_lay.I_exc)
                     self.currents_inh.append(snn_lay.I_inh)
 
-        self.spikes = torch.stack(self.spikes)
-        self.voltages = torch.stack(self.voltages)
+        self.spikes = torch.stack(self.spikes) if self.spikes else []
+        self.voltages = torch.stack(self.voltages) if self.voltages else []
         if self.track_balance:
             self.currents_exc = torch.stack(self.currents_exc)
             self.currents_inh = torch.stack(self.currents_inh)
