@@ -232,18 +232,19 @@ class Experiment:
         results = {}
         results["train_accs"] = train_accs
         results["train_frs"] = train_frs
-        results["train_balances_med"] = train_balances_med
-        results["train_balances_low"] = train_balances_low
         results["validation_accs"] = validation_accs
         results["validation_frs"] = validation_frs
-        results["validation_balances_med"] = valid_balances_med
-        results["validation_balances_low"] = valid_balances_low
         results["test_acc"] = test_acc
         results["test_fr"] = test_fr
-        results["test_balance_med"] = self.balance_val_med
-        results["test_balance_low"] = self.balance_val_low
         results["best_acc"] = best_acc
         results["best_epoch"] = best_epoch
+        if self.track_balance:
+            results["train_balances_med"] = train_balances_med
+            results["train_balances_low"] = train_balances_low
+            results["validation_balances_med"] = valid_balances_med
+            results["validation_balances_low"] = valid_balances_low
+            results["test_balance_med"] = self.balance_val_med
+            results["test_balance_low"] = self.balance_val_low
         
         self.results_dict = results
         torch.save(results, f"{self.exp_folder}/results.pth")
